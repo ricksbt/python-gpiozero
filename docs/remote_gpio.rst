@@ -1,3 +1,34 @@
+.. GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+.. Copyright (c) 2017-2019 Dave Jones <dave@waveform.org.uk>
+.. Copyright (c) 2017-2019 Ben Nuttall <ben@bennuttall.com>
+.. Copyright (c) 2017 rgm <roland@securelink.com>
+..
+.. Redistribution and use in source and binary forms, with or without
+.. modification, are permitted provided that the following conditions are met:
+..
+.. * Redistributions of source code must retain the above copyright notice,
+..   this list of conditions and the following disclaimer.
+..
+.. * Redistributions in binary form must reproduce the above copyright notice,
+..   this list of conditions and the following disclaimer in the documentation
+..   and/or other materials provided with the distribution.
+..
+.. * Neither the name of the copyright holder nor the names of its contributors
+..   may be used to endorse or promote products derived from this software
+..   without specific prior written permission.
+..
+.. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+.. AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.. IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.. ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+.. LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.. CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.. SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+.. INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+.. CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+.. ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.. POSSIBILITY OF SUCH DAMAGE.
+
 =======================
 Configuring Remote GPIO
 =======================
@@ -18,6 +49,7 @@ from another Raspberry Pi, or even from a PC.
 See the :doc:`recipes_remote_gpio` page for examples on how remote pins can be
 used.
 
+
 Preparing the Raspberry Pi
 ==========================
 
@@ -34,21 +66,26 @@ Alternatively, pigpio is available from `abyz.me.uk`_.
 You'll need to enable remote connections, and launch the pigpio daemon on the
 Raspberry Pi.
 
+
 Enable remote connections
 -------------------------
 
-On the Raspbian desktop image, you can enable **Remote GPIO** in the Raspberry
+On the Raspbian desktop image, you can enable *Remote GPIO* in the Raspberry
 Pi configuration tool:
 
 .. image:: images/raspi-config.png
+    :align: center
+    :width: 514px
 
 Alternatively, enter ``sudo raspi-config`` on the command line, and enable
 Remote GPIO. This is functionally equivalent to the desktop method.
 
 This will allow remote connections (until disabled) when the pigpio daemon is
-launched using `systemctl` (see below). It will also launch the pigpio daemon
-for the current session. Therefore, nothing further is required for the current
-session, but after a reboot, a `systemctl` command will be required.
+launched using :command:`systemctl` (see below). It will also launch the pigpio
+daemon for the current session. Therefore, nothing further is required for the
+current session, but after a reboot, a :command:`systemctl` command will be
+required.
+
 
 Command-line: systemctl
 -----------------------
@@ -59,11 +96,12 @@ To automate running the daemon at boot time, run:
 
     $ sudo systemctl enable pigpiod
 
-To run the daemon once using ``systemctl``, run:
+To run the daemon once using :command:`systemctl`, run:
 
 .. code-block:: console
 
     $ sudo systemctl start pigpiod
+
 
 Command-line: pigpiod
 ---------------------
@@ -92,14 +130,16 @@ the ``-n`` flag. For example:
     enable pigpiod`` or ``sudo systemctl start pigpiod`` will not allow remote
     connections unless configured accordingly.
 
+
 Preparing the control computer
 ==============================
 
 If the control computer (the computer you're running your Python code from) is
 a Raspberry Pi running Raspbian (or a PC running `Raspberry Pi Desktop x86`_),
 then you have everything you need. If you're using another Linux distribution,
-Mac OS or Windows then you'll need to install the ``pigpio`` Python library on
+Mac OS or Windows then you'll need to install the `pigpio`_ Python library on
 the PC.
+
 
 Raspberry Pi
 ------------
@@ -133,6 +173,7 @@ or for Python 2:
 .. code-block:: console
 
     $ sudo pip install gpiozero pigpio
+
 
 Linux
 -----
@@ -169,6 +210,7 @@ or Python 2:
 
     $ sudo pip install gpiozero pigpio
 
+
 Mac OS
 ------
 
@@ -187,24 +229,27 @@ Or for Python 2:
 
     $ pip install gpiozero pigpio
 
+
 Windows
 -------
 
-First, install pip by `following this guide`_. Next, install GPIO Zero and
-pigpio with pip:
+Modern Python installers for Windows bundle pip with Python. If pip is not
+installed, you can `follow this guide`_. Next, install GPIO Zero and pigpio with
+pip:
 
 .. code-block:: doscon
 
     C:\Users\user1> pip install gpiozero pigpio
 
+
 Environment variables
 =====================
 
-The simplest way to use devices with remote pins is to set the ``PIGPIO_ADDR``
-environment variable to the IP address of the desired Raspberry Pi. You must
-run your Python script or launch your development environment with the
-environment variable set using the command line. For example, one of the
-following:
+The simplest way to use devices with remote pins is to set the
+:envvar:`PIGPIO_ADDR` environment variable to the IP address of the desired
+Raspberry Pi. You must run your Python script or launch your development
+environment with the environment variable set using the command line. For
+example, one of the following:
 
 .. code-block:: console
 
@@ -214,20 +259,21 @@ following:
     $ PIGPIO_ADDR=192.168.1.3 idle3 &
 
 If you are running this from a PC (not a Raspberry Pi) with gpiozero and the
-pigpio Python library installed, this will work with no further configuration.
-However, if you are running this from a Raspberry Pi, you will also need to
-ensure the default pin factory is set to ``PiGPIOFactory``. If ``RPi.GPIO`` is
-installed, this will be selected as the default pin factory, so either
-uninstall it, or use another environment variable to set it to
-``PiGPIOFactory``:
+`pigpio`_ Python library installed, this will work with no further
+configuration.  However, if you are running this from a Raspberry Pi, you will
+also need to ensure the default pin factory is set to
+:class:`~gpiozero.pins.pigpio.PiGPIOFactory`. If `RPi.GPIO`_ is installed,
+this will be selected as the default pin factory, so either uninstall it, or
+use the :envvar:`GPIOZERO_PIN_FACTORY` environment variable to override it:
 
 .. code-block:: console
 
     $ GPIOZERO_PIN_FACTORY=pigpio PIGPIO_ADDR=192.168.1.3 python3 hello.py
 
-This usage will set the pin factory to :class:`PiGPIOFactory` with a default
-host of ``192.168.1.3``. The pin factory can be changed inline in the code, as
-seen in the following sections.
+This usage will set the pin factory to
+:class:`~gpiozero.pins.pigpio.PiGPIOFactory` with a default host of
+``192.168.1.3``. The pin factory can be changed inline in the code, as seen in
+the following sections.
 
 With this usage, you can write gpiozero code like you would on a Raspberry Pi,
 with no modifications needed. For example:
@@ -255,16 +301,17 @@ pigpio daemon running.
 
     When running code directly on a Raspberry Pi, any pin factory can be used
     (assuming the relevant library is installed), but when a device is used
-    remotely, only :class:`PiGPIOFactory` can be used, as pigpio is the only
-    pin library which supports remote GPIO.
+    remotely, only :class:`~gpiozero.pins.pigpio.PiGPIOFactory` can be used, as
+    `pigpio`_ is the only pin library which supports remote GPIO.
+
 
 Pin factories
 =============
 
 An alternative (or additional) method of configuring gpiozero objects to use
-remote pins is to create instances of :class:`PiGPIOFactory` objects, and use
-them when instantiating device objects. For example, with no environment
-variables set:
+remote pins is to create instances of
+:class:`~gpiozero.pins.pigpio.PiGPIOFactory` objects, and use them when
+instantiating device objects. For example, with no environment variables set:
 
 .. literalinclude:: examples/led_remote_1.py
 
@@ -289,12 +336,11 @@ Of course, multiple IP addresses can be used:
 
 .. literalinclude:: examples/led_remote_5.py
 
-Note that these examples use the :class:`LED` class, which takes a ``pin``
+Note that these examples use the :class:`LED` class, which takes a *pin*
 argument to initialise. Some classes, particularly those representing HATs and
 other add-on boards, do not require their pin numbers to be specified. However,
 it is still possible to use remote pins with these devices, either using
-environment variables, :attr:`Device.pin_factory`, or the ``pin_factory``
-keyword argument:
+environment variables, or the *pin_factory* keyword argument:
 
 .. literalinclude:: examples/traffichat_remote_1.py
 
@@ -312,6 +358,7 @@ network:
 Note that in this case, the Sense HAT code must be run locally, and the GPIO
 remotely.
 
+
 Remote GPIO usage
 =================
 
@@ -320,11 +367,10 @@ Continue to:
 * :doc:`recipes_remote_gpio`
 * :doc:`pi_zero_otg`
 
-
 .. _RPi.GPIO: https://pypi.python.org/pypi/RPi.GPIO
 .. _pigpio: http://abyz.me.uk/rpi/pigpio/python.html
 .. _abyz.me.uk: http://abyz.me.uk/rpi/pigpio/download.html
 .. _Raspberry Pi Desktop x86: https://www.raspberrypi.org/downloads/raspberry-pi-desktop/
 .. _get-pip: https://pip.pypa.io/en/stable/installing/
-.. _following this guide: https://www.raspberrypi.org/learning/using-pip-on-windows/worksheet/
+.. _follow this guide: https://projects.raspberrypi.org/en/projects/using-pip-on-windows
 .. _Sense HAT: https://www.raspberrypi.org/products/sense-hat/

@@ -1,3 +1,34 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2019 Ben Nuttall <ben@bennuttall.com>
+# Copyright (c) 2018 Martchus <martchus@gmx.net>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
@@ -7,7 +38,9 @@ from __future__ import (
 str = type('')
 
 
+import io
 import re
+import errno
 import pytest
 from mock import patch, MagicMock
 
@@ -21,29 +54,55 @@ from gpiozero import *
 def test_pi_revision():
     with patch('gpiozero.devices.Device.pin_factory', LocalPiFactory()):
         # Can't use MockPin for this as we want something that'll actually try
-        # and read /proc/cpuinfo (MockPin simply parrots the 2B's data);
-        # LocalPiFactory is used as we can definitely instantiate it (strictly
-        # speaking it's abstract but we're only interested in the pi_info
-        # stuff)
+        # and read /proc/device-tree/system/linux,revision and /proc/cpuinfo
+        # (MockPin simply parrots the 3B's data); LocalPiFactory is used as we
+        # can definitely instantiate it (strictly speaking it's abstract but
+        # we're only interested in the pi_info stuff)
         with patch('io.open') as m:
-            m.return_value.__enter__.return_value = ['lots of irrelevant', 'lines', 'followed by', 'Revision: 0002', 'Serial:  xxxxxxxxxxx']
+            m.return_value.__enter__.side_effect = [
+                # Pretend /proc/device-tree/system/linux,revision doesn't
+                # exist, and that /proc/cpuinfo contains the Revision: 0002
+                # after some filler
+                IOError(errno.ENOENT, 'File not found'),
+                ['lots of irrelevant', 'lines', 'followed by', 'Revision: 0002', 'Serial:  xxxxxxxxxxx']
+            ]
             assert pi_info().revision == '0002'
             # LocalPiFactory caches the revision (because realistically it
             # isn't going to change at runtime); we need to wipe it here though
             Device.pin_factory._info = None
-            m.return_value.__enter__.return_value = ['Revision: a21042']
+            m.return_value.__enter__.side_effect = [
+                IOError(errno.ENOENT, 'File not found'),
+                ['Revision: a21042']
+            ]
             assert pi_info().revision == 'a21042'
-            # Check over-volting result (some argument over whether this is 7 or
-            # 8 character result; make sure both work)
+            # Check over-volting result (some argument over whether this is 7
+            # or 8 character result; make sure both work)
             Device.pin_factory._info = None
-            m.return_value.__enter__.return_value = ['Revision: 1000003']
+            m.return_value.__enter__.side_effect = [
+                IOError(errno.ENOENT, 'File not found'),
+                ['Revision: 1000003']
+            ]
             assert pi_info().revision == '0003'
             Device.pin_factory._info = None
-            m.return_value.__enter__.return_value = ['Revision: 100003']
+            m.return_value.__enter__.side_effect = [
+                IOError(errno.ENOENT, 'File not found'),
+                ['Revision: 100003']
+            ]
             assert pi_info().revision == '0003'
+            # Check that parsing /proc/device-tree/system/linux,revision also
+            # works properly
+            Device.pin_factory._info = None
+            m.return_value.__enter__.side_effect = None
+            m.return_value.__enter__.return_value = io.BytesIO(b'\x00\xa2\x20\xd3')
+            assert pi_info().revision == 'a220d3'
+            # Finally, check that if everything's a bust we raise PinUnknownPi
             with pytest.raises(PinUnknownPi):
-                m.return_value.__enter__.return_value = ['nothing', 'relevant', 'at all']
                 Device.pin_factory._info = None
+                m.return_value.__enter__.return_value = None
+                m.return_value.__enter__.side_effect = [
+                    IOError(errno.ENOENT, 'File not found'),
+                    ['nothing', 'relevant']
+                ]
                 pi_info()
             with pytest.raises(PinUnknownPi):
                 pi_info('0fff')
@@ -221,4 +280,3 @@ def test_pprint_rows_cols():
         '{0:row16}'.format(pi_info('0002').headers['P1'])
     with pytest.raises(ValueError):
         '{0:col3}'.format(pi_info('0002').headers['P1'])
-

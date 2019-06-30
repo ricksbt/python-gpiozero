@@ -1,3 +1,33 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016-2019 Andrew Scheller <github@loowis.durge.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
@@ -15,19 +45,12 @@ from gpiozero.pins.mock import MockPWMPin, MockPin
 from gpiozero import *
 
 
-def teardown_function(function):
-    Device.pin_factory.reset()
-
-
-# Some rough tests to make sure our MockPin is up to snuff. This is just
-# enough to get reasonable coverage but it's by no means comprehensive...
-
-def test_mock_pin_init():
+def test_mock_pin_init(mock_factory):
     with pytest.raises(ValueError):
         Device.pin_factory.pin(60)
     assert Device.pin_factory.pin(2).number == 2
 
-def test_mock_pin_defaults():
+def test_mock_pin_defaults(mock_factory):
     pin = Device.pin_factory.pin(4)
     assert pin.bounce == None
     assert pin.edges == 'both'
@@ -40,23 +63,23 @@ def test_mock_pin_defaults():
     pin = Device.pin_factory.pin(2)
     assert pin.pull == 'up'
 
-def test_mock_pin_open_close():
+def test_mock_pin_open_close(mock_factory):
     pin = Device.pin_factory.pin(2)
     pin.close()
 
-def test_mock_pin_init_twice_same_pin():
+def test_mock_pin_init_twice_same_pin(mock_factory):
     pin1 = Device.pin_factory.pin(2)
     pin2 = Device.pin_factory.pin(pin1.number)
     assert pin1 is pin2
 
-def test_mock_pin_init_twice_different_pin():
+def test_mock_pin_init_twice_different_pin(mock_factory):
     pin1 = Device.pin_factory.pin(2)
     pin2 = Device.pin_factory.pin(pin1.number+1)
     assert pin1 != pin2
     assert pin1.number == 2
     assert pin2.number == pin1.number+1
 
-def test_mock_pwm_pin_defaults():
+def test_mock_pwm_pin_defaults(mock_factory):
     pin = Device.pin_factory.pin(4, pin_class=MockPWMPin)
     assert pin.bounce == None
     assert pin.edges == 'both'
@@ -69,23 +92,23 @@ def test_mock_pwm_pin_defaults():
     pin = Device.pin_factory.pin(2, pin_class=MockPWMPin)
     assert pin.pull == 'up'
 
-def test_mock_pwm_pin_open_close():
+def test_mock_pwm_pin_open_close(mock_factory):
     pin = Device.pin_factory.pin(2, pin_class=MockPWMPin)
     pin.close()
 
-def test_mock_pwm_pin_init_twice_same_pin():
+def test_mock_pwm_pin_init_twice_same_pin(mock_factory):
     pin1 = Device.pin_factory.pin(2, pin_class=MockPWMPin)
     pin2 = Device.pin_factory.pin(pin1.number, pin_class=MockPWMPin)
     assert pin1 is pin2
 
-def test_mock_pwm_pin_init_twice_different_pin():
+def test_mock_pwm_pin_init_twice_different_pin(mock_factory):
     pin1 = Device.pin_factory.pin(2, pin_class=MockPWMPin)
     pin2 = Device.pin_factory.pin(pin1.number + 1, pin_class=MockPWMPin)
     assert pin1 != pin2
     assert pin1.number == 2
     assert pin2.number == pin1.number+1
 
-def test_mock_pin_init_twice_different_modes():
+def test_mock_pin_init_twice_different_modes(mock_factory):
     pin1 = Device.pin_factory.pin(2, pin_class=MockPin)
     pin2 = Device.pin_factory.pin(pin1.number + 1, pin_class=MockPWMPin)
     assert pin1 != pin2
@@ -94,13 +117,13 @@ def test_mock_pin_init_twice_different_modes():
     with pytest.raises(ValueError):
         Device.pin_factory.pin(pin2.number, pin_class=MockPin)
 
-def test_mock_pin_frequency_unsupported():
+def test_mock_pin_frequency_unsupported(mock_factory):
     pin = Device.pin_factory.pin(2)
     pin.frequency = None
     with pytest.raises(PinPWMUnsupported):
         pin.frequency = 100
 
-def test_mock_pin_frequency_supported():
+def test_mock_pin_frequency_supported(mock_factory):
     pin = Device.pin_factory.pin(2, pin_class=MockPWMPin)
     pin.function = 'output'
     assert pin.frequency is None
@@ -109,7 +132,7 @@ def test_mock_pin_frequency_supported():
     pin.frequency = None
     assert not pin.state
 
-def test_mock_pin_pull():
+def test_mock_pin_pull(mock_factory):
     pin = Device.pin_factory.pin(4)
     pin.function = 'input'
     assert pin.pull == 'floating'
@@ -117,6 +140,11 @@ def test_mock_pin_pull():
     assert pin.state
     pin.pull = 'down'
     assert not pin.state
+    with pytest.raises(PinInvalidPull):
+        pin.pull = 'foo'
+    pin.function = 'output'
+    with pytest.raises(PinFixedPull):
+        pin.pull = 'floating'
     pin.close()
     pin = Device.pin_factory.pin(2)
     pin.function = 'input'
@@ -124,7 +152,7 @@ def test_mock_pin_pull():
     with pytest.raises(PinFixedPull):
         pin.pull = 'floating'
 
-def test_mock_pin_state():
+def test_mock_pin_state(mock_factory):
     pin = Device.pin_factory.pin(2)
     with pytest.raises(PinSetInput):
         pin.state = 1
@@ -136,7 +164,7 @@ def test_mock_pin_state():
     pin.state = 0.5
     assert pin.state == 1
 
-def test_mock_pwm_pin_state():
+def test_mock_pwm_pin_state(mock_factory):
     pin = Device.pin_factory.pin(2, pin_class=MockPWMPin)
     with pytest.raises(PinSetInput):
         pin.state = 1
@@ -148,7 +176,7 @@ def test_mock_pwm_pin_state():
     pin.state = 0.5
     assert pin.state == 0.5
 
-def test_mock_pin_edges():
+def test_mock_pin_edges(mock_factory):
     pin = Device.pin_factory.pin(2)
     assert pin.when_changed is None
     fired = Event()
@@ -157,7 +185,7 @@ def test_mock_pin_edges():
     assert pin.edges == 'both'
     pin.drive_low()
     assert not pin.state
-    def changed():
+    def changed(ticks, state):
         fired.set()
     pin.when_changed = changed
     pin.drive_high()

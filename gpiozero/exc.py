@@ -1,3 +1,34 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016-2019 Andrew Scheller <github@loowis.durge.org>
+# Copyright (c) 2019 Ben Nuttall <ben@bennuttall.com>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     print_function,
@@ -25,6 +56,9 @@ class BadQueueLen(GPIOZeroError, ValueError):
 class BadPinFactory(GPIOZeroError, ImportError):
     "Error raised when an unknown pin factory name is specified"
 
+class ZombieThread(GPIOZeroError, RuntimeError):
+    "Error raised when a thread fails to die within a given timeout"
+
 class CompositeDeviceError(GPIOZeroError):
     "Base class for errors specific to the CompositeDevice hierarchy"
 
@@ -42,6 +76,9 @@ class EnergenieSocketMissing(CompositeDeviceError, ValueError):
 
 class EnergenieBadSocket(CompositeDeviceError, ValueError):
     "Error raised when an invalid socket number is passed to :class:`Energenie`"
+
+class EnergenieBadInitialValue(CompositeDeviceError, ValueError):
+    "Error raised when an invalid initial value is passed to :class:`Energenie`"
 
 class SPIError(GPIOZeroError):
     "Base class for errors related to the SPI implementation"
@@ -166,3 +203,11 @@ class PinFactoryFallback(PinWarning):
 class PinNonPhysical(PinWarning):
     "Warning raised when a non-physical pin is specified in a constructor"
 
+class ThresholdOutOfRange(GPIOZeroWarning):
+    "Warning raised when a threshold is out of range specified by min and max values"
+
+class CallbackSetToNone(GPIOZeroWarning):
+    "Warning raised when a callback is set to None when its previous value was None"
+
+class AmbiguousTone(GPIOZeroWarning):
+    "Warning raised when a Tone is constructed with an ambiguous number"

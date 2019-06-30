@@ -6,11 +6,12 @@ SPHINXOPTS    =
 SPHINXBUILD   = sphinx-build
 PAPER         =
 BUILDDIR      = ../build
-DOT_DIAGRAMS  := $(wildcard images/*.dot)
-MSC_DIAGRAMS  := $(wildcard images/*.mscgen)
-GPI_DIAGRAMS  := $(wildcard images/*.gpi)
-SVG_IMAGES    := $(wildcard images/*.svg) $(DOT_DIAGRAMS:%.dot=%.svg) $(MSC_DIAGRAMS:%.mscgen=%.svg)
-PNG_IMAGES    := $(wildcard images/*.png) $(GPI_DIAGRAMS:%.gpi=%.png) $(SVG_IMAGES:%.svg=%.png)
+PY_SOURCES    := $(wildcard ../gpiozero/*.py ../gpiozero/pins/*.py)
+DOT_DIAGRAMS  := $(wildcard images/*.dot images/*/*.dot)
+MSC_DIAGRAMS  := $(wildcard images/*.mscgen images/*/*.mscgen)
+GPI_DIAGRAMS  := $(wildcard images/*.gpi images/*/*.gpi)
+SVG_IMAGES    := $(wildcard images/*.svg images/*/*.svg) $(DOT_DIAGRAMS:%.dot=%.svg) $(MSC_DIAGRAMS:%.mscgen=%.svg)
+PNG_IMAGES    := $(wildcard images/*.png images/*/*.png) $(GPI_DIAGRAMS:%.gpi=%.png) $(SVG_IMAGES:%.svg=%.png)
 PDF_IMAGES    := $(SVG_IMAGES:%.svg=%.pdf) $(GPI_DIAGRAMS:%.gpi=%.pdf) $(DOT_DIAGRAMS:%.dot=%.pdf) $(MSC_DIAGRAMS:%.mscgen=%.pdf)
 
 # User-friendly check for sphinx-build
@@ -179,6 +180,39 @@ pseudoxml:
 	$(SPHINXBUILD) -b pseudoxml $(ALLSPHINXOPTS) $(BUILDDIR)/pseudoxml
 	@echo
 	@echo "Build finished. The pseudo-XML files are in $(BUILDDIR)/pseudoxml."
+
+images/device_hierarchy.dot: $(PY_SOURCES)
+	./images/class_graph \
+		-i Device \
+		-i SharedMixin \
+		-x SPI -x SPISoftwareBus > $@
+
+images/composite_device_hierarchy.dot: $(PY_SOURCES)
+	./images/class_graph \
+		-i CompositeDevice \
+		-i Energenie \
+		-i LedBord \
+		-x Motor \
+		-x PhaseEnableMotor \
+		-x Servo \
+		-o SourceMixin -o HoldMixin > $@
+
+images/spi_device_hierarchy.dot: $(PY_SOURCES)
+	./images/class_graph -i SPIDevice > $@
+
+images/output_device_hierarchy.dot: $(PY_SOURCES)
+	./images/class_graph \
+		-i OutputDevice \
+		-i RGBLED \
+		-i Servo \
+		-i Motor \
+		-i PhaseEnableMotor \
+		-i TonalBuzzer \
+		-x LedBorg \
+		-x SPI -o SourceMixin > $@
+
+images/input_device_hierarchy.dot: $(PY_SOURCES)
+	./images/class_graph -i InputDevice -o EventsMixin -o HoldMixin > $@
 
 %.svg: %.mscgen
 	mscgen -T svg -o $@ $<

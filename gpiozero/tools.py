@@ -1,4 +1,35 @@
 # vim: set fileencoding=utf-8:
+#
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016-2019 Ben Nuttall <ben@bennuttall.com>
+# Copyright (c) 2016 Andrew Scheller <github@loowis.durge.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
 
 from __future__ import (
     unicode_literals,
@@ -11,6 +42,7 @@ str = type('')
 
 from random import random
 from time import sleep
+from .mixins import ValuesMixin
 try:
     from itertools import izip as zip
 except ImportError:
@@ -27,10 +59,30 @@ except ImportError:
     from .compat import isclose
 
 
+def _normalize(values):
+    """
+    If *values* is a ``ValuesMixin`` derivative, return ``values.values``,
+    otherwise return `values` as provided. Intended to allow support for::
+
+        led.source = foo(btn)
+
+    and::
+
+        led.source = foo(btn.values)
+
+    and::
+
+        led.source = foo(some_iterator)
+    """
+    if isinstance(values, ValuesMixin):
+        return values.values
+    return values
+
+
 def negated(values):
     """
-    Returns the negation of the supplied values (``True`` becomes ``False``,
-    and ``False`` becomes ``True``). For example::
+    Returns the negation of the supplied values (:data:`True` becomes
+    :data:`False`, and :data:`False` becomes :data:`True`). For example::
 
         from gpiozero import Button, LED
         from gpiozero.tools import negated
@@ -38,9 +90,12 @@ def negated(values):
 
         led = LED(4)
         btn = Button(17)
-        led.source = negated(btn.values)
+
+        led.source = negated(btn)
+
         pause()
     """
+    values = _normalize(values)
     for v in values:
         yield not v
 
@@ -59,9 +114,12 @@ def inverted(values, input_min=0, input_max=1):
 
         led = PWMLED(4)
         pot = MCP3008(channel=0)
-        led.source = inverted(pot.values)
+
+        led.source = inverted(pot)
+
         pause()
     """
+    values = _normalize(values)
     if input_min >= input_max:
         raise ValueError('input_min must be smaller than input_max')
     for v in values:
@@ -82,7 +140,9 @@ def scaled(values, output_min, output_max, input_min=0, input_max=1):
 
         motor = Motor(20, 21)
         pot = MCP3008(channel=0)
-        motor.source = scaled(pot.values, -1, 1)
+
+        motor.source = scaled(pot, -1, 1)
+
         pause()
 
     .. warning::
@@ -91,6 +151,7 @@ def scaled(values, output_min, output_max, input_min=0, input_max=1):
         *input_max* (inclusive) then the function will not produce values that
         lie within *output_min* to *output_max* (inclusive).
     """
+    values = _normalize(values)
     if input_min >= input_max:
         raise ValueError('input_min must be smaller than input_max')
     input_size = input_max - input_min
@@ -113,10 +174,11 @@ def clamped(values, output_min=0, output_max=1):
         led = PWMLED(4)
         pot = MCP3008(channel=0)
 
-        led.source = clamped(pot.values, 0.5, 1.0)
+        led.source = clamped(pot, 0.5, 1.0)
 
         pause()
     """
+    values = _normalize(values)
     if output_min >= output_max:
         raise ValueError('output_min must be smaller than output_max')
     for v in values:
@@ -136,11 +198,12 @@ def absoluted(values):
         motor = Motor(22, 27)
         pot = MCP3008(channel=0)
 
-        motor.source = scaled(pot.values, -1, 1)
-        led.source = absoluted(motor.values)
+        motor.source = scaled(pot, -1, 1)
+        led.source = absoluted(motor)
 
         pause()
     """
+    values = _normalize(values)
     for v in values:
         yield abs(v)
 
@@ -160,9 +223,12 @@ def quantized(values, steps, input_min=0, input_max=1):
 
         led = PWMLED(4)
         pot = MCP3008(channel=0)
-        led.source = quantized(pot.values, 4)
+
+        led.source = quantized(pot, 4)
+
         pause()
     """
+    values = _normalize(values)
     if steps < 1:
         raise ValueError("steps must be 1 or larger")
     if input_min >= input_max:
@@ -179,7 +245,7 @@ def booleanized(values, min_value, max_value, hysteresis=0):
     add `hysteresis`_ which prevents the output value rapidly flipping when
     the input value is fluctuating near the *min_value* or *max_value*
     thresholds. For example, to light an LED only when a potentiometer is
-    between 1/4 and 3/4 of its full range::
+    between ¼ and ¾ of its full range::
 
         from gpiozero import LED, MCP3008
         from gpiozero.tools import booleanized
@@ -187,11 +253,14 @@ def booleanized(values, min_value, max_value, hysteresis=0):
 
         led = LED(4)
         pot = MCP3008(channel=0)
-        led.source = booleanized(pot.values, 0.25, 0.75)
+
+        led.source = booleanized(pot, 0.25, 0.75)
+
         pause()
 
     .. _hysteresis: https://en.wikipedia.org/wiki/Hysteresis
     """
+    values = _normalize(values)
     if min_value >= max_value:
         raise ValueError('min_value must be smaller than max_value')
     min_value = float(min_value)
@@ -201,7 +270,8 @@ def booleanized(values, min_value, max_value, hysteresis=0):
     else:
         hysteresis = float(hysteresis)
     if (max_value - min_value) <= hysteresis:
-        raise ValueError('The gap between min_value and max_value must be larger than hysteresis')
+        raise ValueError('The gap between min_value and max_value must be '
+                         'larger than hysteresis')
     last_state = None
     for v in values:
         if v < min_value:
@@ -234,9 +304,9 @@ def booleanized(values, min_value, max_value, hysteresis=0):
 def all_values(*values):
     """
     Returns the `logical conjunction`_ of all supplied values (the result is
-    only ``True`` if and only if all input values are simultaneously ``True``).
-    One or more *values* can be specified. For example, to light an
-    :class:`LED` only when *both* buttons are pressed::
+    only :data:`True` if and only if all input values are simultaneously
+    :data:`True`). One or more *values* can be specified. For example, to light
+    an :class:`~gpiozero.LED` only when *both* buttons are pressed::
 
         from gpiozero import LED, Button
         from gpiozero.tools import all_values
@@ -245,11 +315,15 @@ def all_values(*values):
         led = LED(4)
         btn1 = Button(20)
         btn2 = Button(21)
-        led.source = all_values(btn1.values, btn2.values)
+
+        led.source = all_values(btn1, btn2)
+
         pause()
 
     .. _logical conjunction: https://en.wikipedia.org/wiki/Logical_conjunction
     """
+    print("here")
+    values = [_normalize(v) for v in values]
     for v in zip(*values):
         yield all(v)
 
@@ -257,9 +331,9 @@ def all_values(*values):
 def any_values(*values):
     """
     Returns the `logical disjunction`_ of all supplied values (the result is
-    ``True`` if any of the input values are currently ``True``). One or more
-    *values* can be specified. For example, to light an :class:`LED` when
-    *any* button is pressed::
+    :data:`True` if any of the input values are currently :data:`True`). One or
+    more *values* can be specified. For example, to light an
+    :class:`~gpiozero.LED` when *any* button is pressed::
 
         from gpiozero import LED, Button
         from gpiozero.tools import any_values
@@ -268,11 +342,14 @@ def any_values(*values):
         led = LED(4)
         btn1 = Button(20)
         btn2 = Button(21)
-        led.source = any_values(btn1.values, btn2.values)
+
+        led.source = any_values(btn1, btn2)
+
         pause()
 
     .. _logical disjunction: https://en.wikipedia.org/wiki/Logical_disjunction
     """
+    values = [_normalize(v) for v in values]
     for v in zip(*values):
         yield any(v)
 
@@ -280,8 +357,8 @@ def any_values(*values):
 def averaged(*values):
     """
     Returns the mean of all supplied values. One or more *values* can be
-    specified. For example, to light a :class:`PWMLED` as the average of
-    several potentiometers connected to an :class:`MCP3008` ADC::
+    specified. For example, to light a :class:`~gpiozero.PWMLED` as the average
+    of several potentiometers connected to an :class:`~gpiozero.MCP3008` ADC::
 
         from gpiozero import MCP3008, PWMLED
         from gpiozero.tools import averaged
@@ -292,10 +369,11 @@ def averaged(*values):
         pot3 = MCP3008(channel=2)
         led = PWMLED(4)
 
-        led.source = averaged(pot1.values, pot2.values, pot3.values)
+        led.source = averaged(pot1, pot2, pot3)
 
         pause()
     """
+    values = [_normalize(v) for v in values]
     for v in zip(*values):
         yield mean(v)
 
@@ -303,8 +381,9 @@ def averaged(*values):
 def summed(*values):
     """
     Returns the sum of all supplied values. One or more *values* can be
-    specified. For example, to light a :class:`PWMLED` as the (scaled) sum of
-    several potentiometers connected to an :class:`MCP3008` ADC::
+    specified. For example, to light a :class:`~gpiozero.PWMLED` as the
+    (scaled) sum of several potentiometers connected to an
+    :class:`~gpiozero.MCP3008` ADC::
 
         from gpiozero import MCP3008, PWMLED
         from gpiozero.tools import summed, scaled
@@ -315,10 +394,11 @@ def summed(*values):
         pot3 = MCP3008(channel=2)
         led = PWMLED(4)
 
-        led.source = scaled(summed(pot1.values, pot2.values, pot3.values), 0, 1, 0, 3)
+        led.source = scaled(summed(pot1, pot2, pot3), 0, 1, 0, 3)
 
         pause()
     """
+    values = [_normalize(v) for v in values]
     for v in zip(*values):
         yield sum(v)
 
@@ -326,8 +406,9 @@ def summed(*values):
 def multiplied(*values):
     """
     Returns the product of all supplied values. One or more *values* can be
-    specified. For example, to light a :class:`PWMLED` as the product (i.e.
-    multiplication) of several potentiometers connected to an :class:`MCP3008`
+    specified. For example, to light a :class:`~gpiozero.PWMLED` as the product
+    (i.e. multiplication) of several potentiometers connected to an
+    :class:`~gpiozero.MCP3008`
     ADC::
 
         from gpiozero import MCP3008, PWMLED
@@ -339,10 +420,11 @@ def multiplied(*values):
         pot3 = MCP3008(channel=2)
         led = PWMLED(4)
 
-        led.source = multiplied(pot1.values, pot2.values, pot3.values)
+        led.source = multiplied(pot1, pot2, pot3)
 
         pause()
     """
+    values = [_normalize(v) for v in values]
     def _product(it):
         p = 1
         for n in it:
@@ -366,25 +448,26 @@ def queued(values, qsize):
         btn = Button(17)
 
         for i in range(4):
-            leds[i].source = queued(leds[i + 1].values, 5)
+            leds[i].source = queued(leds[i + 1], 5)
             leds[i].source_delay = 0.01
 
-        leds[4].source = btn.values
+        leds[4].source = btn
 
         pause()
     """
+    values = [_normalize(v) for v in values]
     if qsize < 1:
         raise ValueError("qsize must be 1 or larger")
     q = []
     it = iter(values)
-    for i in range(qsize):
-        q.append(next(it))
-    for i in cycle(range(qsize)):
-        yield q[i]
-        try:
+    try:
+        for i in range(qsize):
+            q.append(next(it))
+        for i in cycle(range(qsize)):
+            yield q[i]
             q[i] = next(it)
-        except StopIteration:
-            break
+    except StopIteration:
+        pass
 
 
 def smoothed(values, qsize, average=mean):
@@ -400,27 +483,29 @@ def smoothed(values, qsize, average=mean):
 
         adc = MCP3008(channel=0)
 
-        for value in smoothed(adc.values, 5):
+        for value in smoothed(adc, 5):
             print(value)
     """
+    values = _normalize(values)
     if qsize < 1:
         raise ValueError("qsize must be 1 or larger")
     q = []
     it = iter(values)
-    for i in range(qsize):
-        q.append(next(it))
-    for i in cycle(range(qsize)):
-        yield average(q)
-        try:
+    try:
+        for i in range(qsize):
+            q.append(next(it))
+        for i in cycle(range(qsize)):
+            yield average(q)
             q[i] = next(it)
-        except StopIteration:
-            break
+    except StopIteration:
+        pass
 
 
 def pre_delayed(values, delay):
     """
     Waits for *delay* seconds before returning each item from *values*.
     """
+    values = _normalize(values)
     if delay < 0:
         raise ValueError("delay must be 0 or larger")
     for v in values:
@@ -432,6 +517,7 @@ def post_delayed(values, delay):
     """
     Waits for *delay* seconds after returning each item from *values*.
     """
+    values = _normalize(values)
     if delay < 0:
         raise ValueError("delay must be 0 or larger")
     for v in values:
@@ -450,7 +536,7 @@ def pre_periodic_filtered(values, block, repeat_after):
 
         adc = MCP3008(channel=0)
 
-        for value in pre_periodic_filtered(adc.values, 50, 0):
+        for value in pre_periodic_filtered(adc, 50, 0):
             print(value)
 
     Or to only display every even item read from an ADC::
@@ -460,25 +546,29 @@ def pre_periodic_filtered(values, block, repeat_after):
 
         adc = MCP3008(channel=0)
 
-        for value in pre_periodic_filtered(adc.values, 1, 1):
+        for value in pre_periodic_filtered(adc, 1, 1):
             print(value)
     """
+    values = _normalize(values)
     if block < 1:
         raise ValueError("block must be 1 or larger")
     if repeat_after < 0:
         raise ValueError("repeat_after must be 0 or larger")
     it = iter(values)
-    if repeat_after == 0:
-        for _ in range(block):
-            next(it)
-        while True:
-            yield next(it)
-    else:
-        while True:
+    try:
+        if repeat_after == 0:
             for _ in range(block):
                 next(it)
-            for _ in range(repeat_after):
+            while True:
                 yield next(it)
+        else:
+            while True:
+                for _ in range(block):
+                    next(it)
+                for _ in range(repeat_after):
+                    yield next(it)
+    except StopIteration:
+        pass
 
 
 def post_periodic_filtered(values, repeat_after, block):
@@ -492,19 +582,23 @@ def post_periodic_filtered(values, repeat_after, block):
 
         adc = MCP3008(channel=0)
 
-        for value in post_periodic_filtered(adc.values, 9, 1):
+        for value in post_periodic_filtered(adc, 9, 1):
             print(value)
     """
+    values = _normalize(values)
     if repeat_after < 1:
         raise ValueError("repeat_after must be 1 or larger")
     if block < 1:
         raise ValueError("block must be 1 or larger")
     it = iter(values)
-    while True:
-        for _ in range(repeat_after):
-            yield next(it)
-        for _ in range(block):
-            next(it)
+    try:
+        while True:
+            for _ in range(repeat_after):
+                yield next(it)
+            for _ in range(block):
+                next(it)
+    except StopIteration:
+        pass
 
 
 def random_values():
@@ -544,7 +638,7 @@ def sin_values(period=360):
         red.source_delay = 0.01
         blue.source_delay = red.source_delay
         red.source = scaled(sin_values(100), 0, 1, -1, 1)
-        blue.source = inverted(red.values)
+        blue.source = inverted(red)
 
         pause()
 
@@ -571,7 +665,7 @@ def cos_values(period=360):
         red.source_delay = 0.01
         blue.source_delay = red.source_delay
         red.source = scaled(cos_values(100), 0, 1, -1, 1)
-        blue.source = inverted(red.values)
+        blue.source = inverted(red)
 
         pause()
 
@@ -584,9 +678,9 @@ def cos_values(period=360):
 
 def alternating_values(initial_value=False):
     """
-    Provides an infinite source of values alternating between ``True`` and
-    ``False``, starting wth *initial_value* (which defaults to ``False``). For
-    example, to produce a flashing LED::
+    Provides an infinite source of values alternating between :data:`True` and
+    :data:`False`, starting wth *initial_value* (which defaults to
+    :data:`False`). For example, to produce a flashing LED::
 
         from gpiozero import LED
         from gpiozero.tools import alternating_values
@@ -638,3 +732,25 @@ def ramping_values(period=360):
         elif value > 1 or value < 0:
             step *= -1
             value += step
+
+def zip_values(*devices):
+    """
+    Provides a source constructed from the values of each item, for example::
+
+        from gpiozero import MCP3008, Robot
+        from gpiozero.tools import zip_values
+        from signal import pause
+
+        robot = Robot(left=(4, 14), right=(17, 18))
+
+        left = MCP3008(0)
+        right = MCP3008(1)
+
+        robot.source = zip_values(left, right)
+
+        pause()
+
+    ``zip_values(left, right)`` is equivalent to ``zip(left.values,
+    right.values)``.
+    """
+    return zip(*[d.values for d in devices])

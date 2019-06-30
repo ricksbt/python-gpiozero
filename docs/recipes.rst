@@ -1,3 +1,35 @@
+.. GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+.. Copyright (c) 2015-2019 Dave Jones <dave@waveform.org.uk>
+.. Copyright (c) 2016-2018 Ben Nuttall <ben@bennuttall.com>
+.. Copyright (c) 2016 Barry Byford <barry_byford@yahoo.co.uk>
+.. Copyright (c) 2016 Andrew Scheller <github@loowis.durge.org>
+..
+.. Redistribution and use in source and binary forms, with or without
+.. modification, are permitted provided that the following conditions are met:
+..
+.. * Redistributions of source code must retain the above copyright notice,
+..   this list of conditions and the following disclaimer.
+..
+.. * Redistributions in binary form must reproduce the above copyright notice,
+..   this list of conditions and the following disclaimer in the documentation
+..   and/or other materials provided with the distribution.
+..
+.. * Neither the name of the copyright holder nor the names of its contributors
+..   may be used to endorse or promote products derived from this software
+..   without specific prior written permission.
+..
+.. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+.. AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.. IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.. ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+.. LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+.. CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+.. SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+.. INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+.. CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+.. ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+.. POSSIBILITY OF SUCH DAMAGE.
+
 =============
 Basic Recipes
 =============
@@ -39,11 +71,10 @@ In this case, all references to items within GPIO Zero must be prefixed::
 Pin Numbering
 =============
 
-This library uses Broadcom (BCM) pin numbering for the GPIO pins, as opposed
-to physical (BOARD) numbering. Unlike in the `RPi.GPIO`_ library, this is not
-configurable.
-
-.. _RPi.GPIO: https://pypi.python.org/pypi/RPi.GPIO
+This library uses Broadcom (BCM) pin numbering for the GPIO pins, as opposed to
+physical (BOARD) numbering. Unlike in the `RPi.GPIO`_ library, this is not
+configurable. However, translation from other schemes can be used by providing
+prefixes to pin numbers (see below).
 
 Any pin marked "GPIO" in the diagram below can be used as a pin number.  For
 example, if an LED was attached to "GPIO17" you would specify the pin number as
@@ -52,10 +83,41 @@ example, if an LED was attached to "GPIO17" you would specify the pin number as
 .. image:: images/pin_layout.*
     :align: center
 
+If you wish to use physical (BOARD) numbering you can specify the pin number as
+"BOARD11". If you are familiar with the `wiringPi`_ pin numbers (another
+physical layout) you could use "WPI0" instead. Finally, you can specify pins as
+"header:number", e.g. "J8:11" meaning physical pin 11 on header J8 (the GPIO
+header on modern Pis). Hence, the following lines are all equivalent:
+
+.. code-block:: pycon
+
+    >>> led = LED(17)
+    >>> led = LED("GPIO17")
+    >>> led = LED("BCM17")
+    >>> led = LED("BOARD11")
+    >>> led = LED("WPI0")
+    >>> led = LED("J8:11")
+
+Note that these alternate schemes are merely translations. If you request the
+state of a device on the command line, the associated pin number will *always*
+be reported in the Broadcom (BCM) scheme:
+
+.. code-block:: pycon
+
+    >>> led = LED("BOARD11")
+    >>> led
+    <gpiozero.LED object on pin GPIO17, active_high=True, is_active=False>
+
+Throughout this manual we will use the default integer pin numbers, in the
+Broadcom (BCM) layout shown above.
+
+.. _RPi.GPIO: https://pypi.python.org/pypi/RPi.GPIO
+.. _wiringPi: https://projects.drogon.net/raspberry-pi/wiringpi/pins/
+
 LED
 ===
 
-.. image:: images/led.*
+.. image:: images/led_bb.*
 
 Turn an :class:`LED` on and off repeatedly:
 
@@ -74,6 +136,8 @@ Alternatively:
 LED with variable brightness
 ============================
 
+.. image:: images/led_bb.*
+
 Any regular LED can have its brightness value set using PWM
 (pulse-width-modulation). In GPIO Zero, this can be achieved using
 :class:`PWMLED` using values between 0 and 1:
@@ -88,7 +152,7 @@ out continuously):
 Button
 ======
 
-.. image:: images/button.*
+.. image:: images/button_bb.*
 
 Check if a :class:`Button` is pressed:
 
@@ -106,11 +170,11 @@ Run a function every time the button is pressed:
 .. note::
 
     Note that the line ``button.when_pressed = say_hello`` does not run the
-    function ``say_hello``, rather it creates a reference to the function to
-    be called when the button is pressed. Accidental use of
-    ``button.when_pressed = say_hello()`` would set the ``when_pressed`` action
-    to ``None`` (the return value of this function) which would mean nothing
-    happens when the button is pressed.
+    function ``say_hello``, rather it creates a reference to the function to be
+    called when the button is pressed. Accidental use of ``button.when_pressed
+    = say_hello()`` would set the ``when_pressed`` action to :data:`None` (the
+    return value of this function) which would mean nothing happens when the
+    button is pressed.
 
 Similarly, functions can be attached to button releases:
 
@@ -158,6 +222,8 @@ the Raspberry Pi when the button is held for 2 seconds:
 LEDBoard
 ========
 
+.. image:: images/ledboard_bb.*
+
 A collection of LEDs can be accessed using :class:`LEDBoard`:
 
 .. literalinclude:: examples/led_board_1.py
@@ -172,6 +238,8 @@ See more :class:`LEDBoard` examples in the :ref:`advanced LEDBoard recipes
 
 LEDBarGraph
 ===========
+
+.. image:: images/ledbargraph_bb.*
 
 A collection of LEDs can be treated like a bar graph using
 :class:`LEDBarGraph`:
@@ -227,6 +295,8 @@ See `Quick Reaction Game`_ for a full resource.
 
 GPIO Music Box
 ==============
+
+.. image:: images/music_box_bb.*
 
 Each button plays a different sound!
 
@@ -297,7 +367,7 @@ Distance sensor
     In the diagram above, the wires leading from the sensor to the breadboard
     can be omitted; simply plug the sensor directly into the breadboard facing
     the edge (unfortunately this is difficult to illustrate in the diagram
-    without sensor's diagram obscuring most of the breadboard!)
+    without the sensor's diagram obscuring most of the breadboard!)
 
 Have a :class:`DistanceSensor` detect the distance to the nearest object:
 
@@ -306,6 +376,26 @@ Have a :class:`DistanceSensor` detect the distance to the nearest object:
 Run a function when something gets near the sensor:
 
 .. literalinclude:: examples/distance_sensor_2.py
+
+Servo
+=====
+
+Control a servo between its minimum, mid-point and maximum positions in
+sequence:
+
+.. literalinclude:: examples/servo_1.py
+
+Use a button to control the servo between its minimum and maximum positions:
+
+.. literalinclude:: examples/servo_2.py
+
+Automate the servo to continuously slowly sweep:
+
+.. literalinclude:: examples/servo_sweep.py
+
+Use :class:`AngularServo` so you can specify an angle:
+
+.. literalinclude:: examples/angular_servo.py
 
 Motors
 ======
@@ -319,7 +409,7 @@ Spin a :class:`Motor` around forwards and backwards:
 Robot
 =====
 
-.. IMAGE TBD
+.. image:: images/robot_bb.*
 
 Make a :class:`Robot` drive around in (roughly) a square:
 
@@ -333,12 +423,16 @@ Make a robot with a distance sensor that runs away when things get within
 Button controlled robot
 =======================
 
+.. image:: images/button_robot_bb.*
+
 Use four GPIO buttons as forward/back/left/right controls for a robot:
 
 .. literalinclude:: examples/robot_buttons_1.py
 
 Keyboard controlled robot
 =========================
+
+.. image:: images/robot_bb.*
 
 Use up/down/left/right keys to control a robot:
 
@@ -363,6 +457,8 @@ suffice:
 
 Motion sensor robot
 ===================
+
+.. image:: images/motion_robot_bb.*
 
 Make a robot drive forward when it detects motion:
 
@@ -400,6 +496,8 @@ analog to digital converter:
 Full color LED controlled by 3 potentiometers
 =============================================
 
+.. image:: images/rgbled_pot_bb.*
+
 Wire up three potentiometers (for red, green and blue) and use each of their
 values to make up the colour of the LED:
 
@@ -409,12 +507,6 @@ Alternatively, the following example is identical, but uses the
 :attr:`~SourceMixin.source` property rather than a :keyword:`while` loop:
 
 .. literalinclude:: examples/rgbled_pot_2.py
-    :emphasize-lines: 9
-
-.. note::
-
-    Please note the example above requires Python 3. In Python 2, :func:`zip`
-    doesn't support lazy evaluation so the script will simply hang.
 
 Timed heat lamp
 ===============
@@ -453,7 +545,7 @@ Continue to:
 * :doc:`recipes_remote_gpio`
 
 
-.. _Push Button Stop Motion: https://www.raspberrypi.org/learning/quick-reaction-game/
-.. _Quick Reaction Game: https://www.raspberrypi.org/learning/quick-reaction-game/
-.. _GPIO Music Box: https://www.raspberrypi.org/learning/gpio-music-box/
+.. _Push Button Stop Motion: https://projects.raspberrypi.org/en/projects/push-button-stop-motion
+.. _Quick Reaction Game: https://projects.raspberrypi.org/en/projects/python-quick-reaction-game
+.. _GPIO Music Box: https://projects.raspberrypi.org/en/projects/gpio-music-box
 .. _Energenie Pi-mote: https://energenie4u.co.uk/catalogue/product/ENER002-2PI

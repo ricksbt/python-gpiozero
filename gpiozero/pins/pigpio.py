@@ -1,3 +1,34 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016 BuildTools <david.glaude@gmail.com>
+# Copyright (c) 2016 Andrew Scheller <github@loowis.durge.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
@@ -24,15 +55,17 @@ from ..exc import (
     PinInvalidState,
     SPIBadArgs,
     SPIInvalidClockMode,
-    )
+    PinPWMFixedValue,
+    DeviceClosed
+)
 
 
 class PiGPIOFactory(PiFactory):
     """
-    Uses the `pigpio`_ library to interface to the Pi's GPIO pins. The pigpio
-    library relies on a daemon (``pigpiod``) to be running as root to provide
-    access to the GPIO pins, and communicates with this daemon over a network
-    socket.
+    Extends :class:`~gpiozero.pins.pi.PiFactory`. Uses the `pigpio`_ library to
+    interface to the Pi's GPIO pins. The pigpio library relies on a daemon
+    (:command:`pigpiod`) to be running as root to provide access to the GPIO
+    pins, and communicates with this daemon over a network socket.
 
     While this does mean only the daemon itself should control the pins, the
     architecture does have several advantages:
@@ -68,14 +101,17 @@ class PiGPIOFactory(PiFactory):
         to be possible to get the daemon into "unusual" states. We would be
         most interested to hear any bug reports relating to this (it may be a
         bug in our pin implementation). A workaround for now is simply to
-        restart the ``pigpiod`` daemon.
+        restart the :command:`pigpiod` daemon.
 
-    .. _pigpio: http://abyz.co.uk/rpi/pigpio/
+    .. _pigpio: https://pypi.org/project/pigpio/
     """
-    def __init__(
-            self, host=os.getenv('PIGPIO_ADDR', 'localhost'),
-            port=int(os.getenv('PIGPIO_PORT', 8888))):
+    def __init__(self, host=None, port=None):
         super(PiGPIOFactory, self).__init__()
+        if host is None:
+            host = os.environ.get('PIGPIO_ADDR', 'localhost')
+        if port is None:
+            # XXX Use getservbyname
+            port = int(os.environ.get('PIGPIO_PORT', 8888))
         self.pin_class = PiGPIOPin
         self.spi_classes = {
             ('hardware', 'exclusive'): PiGPIOHardwareSPI,
@@ -131,11 +167,23 @@ class PiGPIOFactory(PiFactory):
         self._spis.append(intf)
         return intf
 
+    def ticks(self):
+        return self._connection.get_current_tick()
+
+    @staticmethod
+    def ticks_diff(later, earlier):
+        # NOTE: pigpio ticks are unsigned 32-bit quantities that wrap every
+        # 71.6 minutes. The modulo below (oh the joys of having an *actual*
+        # modulo operator, unlike C's remainder) ensures the result is valid
+        # even when later < earlier due to wrap-around (assuming the duration
+        # measured is not longer than the period)
+        return ((later - earlier) % 0x100000000) / 1000000
+
 
 class PiGPIOPin(PiPin):
     """
-    Pin implementation for the `pigpio`_ library. See :class:`PiGPIOFactory`
-    for more information.
+    Extends :class:`~gpiozero.pins.pi.PiPin`. Pin implementation for the
+    `pigpio`_ library. See :class:`PiGPIOFactory` for more information.
 
     .. _pigpio: http://abyz.co.uk/rpi/pigpio/
     """
@@ -282,8 +330,8 @@ class PiGPIOPin(PiPin):
         finally:
             self.when_changed = f
 
-    def _call_when_changed(self, gpio, level, tick):
-        super(PiGPIOPin, self)._call_when_changed()
+    def _call_when_changed(self, gpio, level, ticks):
+        super(PiGPIOPin, self)._call_when_changed(ticks, level)
 
     def _enable_event_detect(self):
         self._callback = self.factory.connection.callback(
@@ -479,7 +527,7 @@ class PiGPIOSoftwareSPI(SPI, Device):
     def _set_clock_mode(self, value):
         self._check_open()
         if not 0 <= value < 4:
-            raise SPIInvalidClockmode("%d is not a valid SPI clock mode" % value)
+            raise SPIInvalidClockMode("%d is not a valid SPI clock mode" % value)
         self._factory.connection.bb_spi_close(self._select_pin)
         self._spi_flags = (self._spi_flags & ~0x3) | value
         self._factory.connection.bb_spi_open(
@@ -532,4 +580,3 @@ class PiGPIOSoftwareSPIShared(SharedMixin, PiGPIOSoftwareSPI):
     @classmethod
     def _shared_key(cls, factory, clock_pin, mosi_pin, miso_pin, select_pin):
         return (factory, select_pin)
-

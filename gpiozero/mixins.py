@@ -1,3 +1,34 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2018-2019 Ben Nuttall <ben@bennuttall.com>
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016 Andrew Scheller <github@loowis.durge.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     print_function,
@@ -12,11 +43,11 @@ import weakref
 from functools import wraps, partial
 from threading import Event
 from collections import deque
-from time import time
 try:
     from statistics import median
 except ImportError:
     from .compat import median
+import warnings
 
 from .threads import GPIOThread
 from .exc import (
@@ -24,14 +55,20 @@ from .exc import (
     BadWaitTime,
     BadQueueLen,
     DeviceClosed,
+    CallbackSetToNone,
     )
+
+callback_warning = (
+    'The callback was set to None. This may have been unintentional '
+    'e.g. btn.when_pressed = pressed() instead of btn.when_pressed = pressed'
+)
 
 class ValuesMixin(object):
     """
     Adds a :attr:`values` property to the class which returns an infinite
-    generator of readings from the :attr:`value` property. There is rarely a
-    need to use this mixin directly as all base classes in GPIO Zero include
-    it.
+    generator of readings from the :attr:`~Device.value` property. There is
+    rarely a need to use this mixin directly as all base classes in GPIO Zero
+    include it.
 
     .. note::
 
@@ -41,7 +78,7 @@ class ValuesMixin(object):
     @property
     def values(self):
         """
-        An infinite iterator of values read from `value`.
+        An infinite iterator of values read from :attr:`value`.
         """
         while True:
             try:
@@ -52,10 +89,10 @@ class ValuesMixin(object):
 
 class SourceMixin(object):
     """
-    Adds a :attr:`source` property to the class which, given an iterable, sets
-    :attr:`value` to each member of that iterable until it is exhausted.  This
-    mixin is generally included in novel output devices to allow their state to
-    be driven from another device.
+    Adds a :attr:`source` property to the class which, given an iterable or a
+    :class:`ValuesMixin` descendent, sets :attr:`~Device.value` to each member
+    of that iterable until it is exhausted. This mixin is generally included in
+    novel output devices to allow their state to be driven from another device.
 
     .. note::
 
@@ -69,14 +106,8 @@ class SourceMixin(object):
         super(SourceMixin, self).__init__(*args, **kwargs)
 
     def close(self):
-        try:
-            self.source = None
-        except AttributeError:
-            pass
-        try:
-            super(SourceMixin, self).close()
-        except AttributeError:
-            pass
+        self.source = None
+        super(SourceMixin, self).close()
 
     def _copy_values(self, source):
         for v in source:
@@ -111,6 +142,8 @@ class SourceMixin(object):
         if getattr(self, '_source_thread', None):
             self._source_thread.stop()
         self._source_thread = None
+        if isinstance(value, ValuesMixin):
+            value = value.values
         self._source = value
         if value is not None:
             self._source_thread = GPIOThread(target=self._copy_values, args=(value,))
@@ -127,7 +160,7 @@ class SharedMixin(object):
     used to determine how many times an instance has been "constructed" in this
     way.
 
-    When :meth:`close` is called, an internal reference counter will be
+    When :meth:`~Device.close` is called, an internal reference counter will be
     decremented and the instance will only close when it reaches zero.
     """
     _instances = {}
@@ -166,17 +199,19 @@ class EventsMixin(object):
         self._inactive_event = Event()
         self._when_activated = None
         self._when_deactivated = None
-        self._last_state = None
-        self._last_changed = time()
+        self._last_active = None
+        self._last_changed = self.pin_factory.ticks()
 
     def wait_for_active(self, timeout=None):
         """
         Pause the script until the device is activated, or the timeout is
         reached.
 
-        :param float timeout:
-            Number of seconds to wait before proceeding. If this is ``None``
-            (the default), then wait indefinitely until the device is active.
+        :type timeout: float or None
+        :param timeout:
+            Number of seconds to wait before proceeding. If this is
+            :data:`None` (the default), then wait indefinitely until the device
+            is active.
         """
         return self._active_event.wait(timeout)
 
@@ -185,9 +220,11 @@ class EventsMixin(object):
         Pause the script until the device is deactivated, or the timeout is
         reached.
 
-        :param float timeout:
-            Number of seconds to wait before proceeding. If this is ``None``
-            (the default), then wait indefinitely until the device is inactive.
+        :type timeout: float or None
+        :param timeout:
+            Number of seconds to wait before proceeding. If this is
+            :data:`None` (the default), then wait indefinitely until the device
+            is inactive.
         """
         return self._inactive_event.wait(timeout)
 
@@ -203,12 +240,14 @@ class EventsMixin(object):
         single mandatory parameter, the device that activated will be passed
         as that parameter.
 
-        Set this property to ``None`` (the default) to disable the event.
+        Set this property to :data:`None` (the default) to disable the event.
         """
         return self._when_activated
 
     @when_activated.setter
     def when_activated(self, value):
+        if self.when_activated is None and value is None:
+            warnings.warn(CallbackSetToNone(callback_warning))
         self._when_activated = self._wrap_callback(value)
 
     @property
@@ -223,22 +262,25 @@ class EventsMixin(object):
         single mandatory parameter, the device that deactivated will be
         passed as that parameter.
 
-        Set this property to ``None`` (the default) to disable the event.
+        Set this property to :data:`None` (the default) to disable the event.
         """
         return self._when_deactivated
 
     @when_deactivated.setter
     def when_deactivated(self, value):
+        if self.when_deactivated is None and value is None:
+            warnings.warn(CallbackSetToNone(callback_warning))
         self._when_deactivated = self._wrap_callback(value)
 
     @property
     def active_time(self):
         """
         The length of time (in seconds) that the device has been active for.
-        When the device is inactive, this is ``None``.
+        When the device is inactive, this is :data:`None`.
         """
         if self._active_event.is_set():
-            return time() - self._last_changed
+            return self.pin_factory.ticks_diff(self.pin_factory.ticks(),
+                                               self._last_changed)
         else:
             return None
 
@@ -246,10 +288,11 @@ class EventsMixin(object):
     def inactive_time(self):
         """
         The length of time (in seconds) that the device has been inactive for.
-        When the device is active, this is ``None``.
+        When the device is active, this is :data:`None`.
         """
         if self._inactive_event.is_set():
-            return time() - self._last_changed
+            return self.pin_factory.ticks_diff(self.pin_factory.ticks(),
+                                               self._last_changed)
         else:
             return None
 
@@ -305,19 +348,21 @@ class EventsMixin(object):
         if self.when_deactivated:
             self.when_deactivated()
 
-    def _fire_events(self):
-        old_state = self._last_state
-        new_state = self._last_state = self.is_active
-        if old_state is None:
+    def _fire_events(self, ticks, new_active):
+        # NOTE: in contrast to the pin when_changed event, this method takes
+        # ticks and *is_active* (i.e. the device's .is_active) as opposed to a
+        # pin's *state*.
+        old_active, self._last_active = self._last_active, new_active
+        if old_active is None:
             # Initial "indeterminate" state; set events but don't fire
             # callbacks as there's not necessarily an edge
-            if new_state:
+            if new_active:
                 self._active_event.set()
             else:
                 self._inactive_event.set()
-        elif old_state != new_state:
-            self._last_changed = time()
-            if new_state:
+        elif old_active != new_active:
+            self._last_changed = ticks
+            if new_active:
                 self._inactive_event.clear()
                 self._active_event.set()
                 self._fire_activated()
@@ -331,7 +376,7 @@ class HoldMixin(EventsMixin):
     """
     Extends :class:`EventsMixin` to add the :attr:`when_held` event and the
     machinery to fire that event repeatedly (when :attr:`hold_repeat` is
-    ``True``) at internals defined by :attr:`hold_time`.
+    :data:`True`) at internals defined by :attr:`hold_time`.
     """
     def __init__(self, *args, **kwargs):
         self._hold_thread = None
@@ -343,13 +388,10 @@ class HoldMixin(EventsMixin):
         self._hold_thread = HoldThread(self)
 
     def close(self):
-        if getattr(self, '_hold_thread', None):
+        if self._hold_thread is not None:
             self._hold_thread.stop()
         self._hold_thread = None
-        try:
-            super(HoldMixin, self).close()
-        except AttributeError:
-            pass
+        super(HoldMixin, self).close()
 
     def _fire_activated(self):
         super(HoldMixin, self)._fire_activated()
@@ -375,7 +417,7 @@ class HoldMixin(EventsMixin):
         single mandatory parameter, the device that activated will be passed
         as that parameter.
 
-        Set this property to ``None`` (the default) to disable the event.
+        Set this property to :data:`None` (the default) to disable the event.
         """
         return self._when_held
 
@@ -402,7 +444,7 @@ class HoldMixin(EventsMixin):
     @property
     def hold_repeat(self):
         """
-        If ``True``, :attr:`when_held` will be executed repeatedly with
+        If :data:`True`, :attr:`when_held` will be executed repeatedly with
         :attr:`hold_time` seconds between each invocation.
         """
         return self._hold_repeat
@@ -414,7 +456,7 @@ class HoldMixin(EventsMixin):
     @property
     def is_held(self):
         """
-        When ``True``, the device has been active for at least
+        When :data:`True`, the device has been active for at least
         :attr:`hold_time` seconds.
         """
         return self._held_from is not None
@@ -426,10 +468,11 @@ class HoldMixin(EventsMixin):
         This is counted from the first execution of the :attr:`when_held` event
         rather than when the device activated, in contrast to
         :attr:`~EventsMixin.active_time`. If the device is not currently held,
-        this is ``None``.
+        this is :data:`None`.
         """
         if self._held_from is not None:
-            return time() - self._held_from
+            return self.pin_factory.ticks_diff(self.pin_factory.ticks(),
+                                               self._held_from)
         else:
             return None
 
@@ -456,7 +499,7 @@ class HoldThread(GPIOThread):
                             parent._inactive_event.wait(parent.hold_time)
                             ):
                         if parent._held_from is None:
-                            parent._held_from = time()
+                            parent._held_from = parent.pin_factory.ticks()
                         parent._fire_held()
                         if not parent.hold_repeat:
                             break
@@ -475,19 +518,22 @@ class GPIOQueue(GPIOThread):
     """
     def __init__(
             self, parent, queue_len=5, sample_wait=0.0, partial=False,
-            average=median):
+            average=median, ignore=None):
         assert callable(average)
         super(GPIOQueue, self).__init__(target=self.fill)
         if queue_len < 1:
             raise BadQueueLen('queue_len must be at least one')
         if sample_wait < 0:
             raise BadWaitTime('sample_wait must be 0 or greater')
+        if ignore is None:
+            ignore = set()
         self.queue = deque(maxlen=queue_len)
         self.partial = bool(partial)
         self.sample_wait = float(sample_wait)
         self.full = Event()
         self.parent = weakref.proxy(parent)
         self.average = average
+        self.ignore = ignore
 
     @property
     def value(self):
@@ -495,19 +541,20 @@ class GPIOQueue(GPIOThread):
             self.full.wait()
         try:
             return self.average(self.queue)
-        except ZeroDivisionError:
+        except (ZeroDivisionError, ValueError):
             # No data == inactive value
             return 0.0
 
     def fill(self):
         try:
             while not self.stopping.wait(self.sample_wait):
-                self.queue.append(self.parent._read())
+                value = self.parent._read()
+                if value not in self.ignore:
+                    self.queue.append(value)
                 if not self.full.is_set() and len(self.queue) >= self.queue.maxlen:
                     self.full.set()
                 if (self.partial or self.full.is_set()) and isinstance(self.parent, EventsMixin):
-                    self.parent._fire_events()
+                    self.parent._fire_events(self.parent.pin_factory.ticks(), self.parent.is_active)
         except ReferenceError:
             # Parent is dead; time to die!
             pass
-

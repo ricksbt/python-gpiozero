@@ -1,15 +1,52 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2018 Martchus <martchus@gmx.net>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
     print_function,
     division,
     )
+nstr = str
 str = type('')
 
 import io
+import errno
+import struct
 import warnings
 from collections import defaultdict
 from threading import Lock
+try:
+    from time import monotonic
+except ImportError:
+    from time import time as monotonic
 
 try:
     from spidev import SpiDev
@@ -26,9 +63,9 @@ from ..exc import DeviceClosed, PinUnknownPi, SPIInvalidClockMode
 
 class LocalPiFactory(PiFactory):
     """
-    Abstract base class representing pins attached locally to a Pi. This forms
-    the base class for local-only pin interfaces
-    (:class:`~gpiozero.pins.rpigpio.RPiGPIOPin`,
+    Extends :class:`~gpiozero.pins.pi.PiFactory`. Abstract base class
+    representing pins attached locally to a Pi. This forms the base class for
+    local-only pin interfaces (:class:`~gpiozero.pins.rpigpio.RPiGPIOPin`,
     :class:`~gpiozero.pins.rpio.RPIOPin`, and
     :class:`~gpiozero.pins.native.NativePin`).
     """
@@ -53,26 +90,57 @@ class LocalPiFactory(PiFactory):
         self._res_lock = LocalPiFactory._res_lock
 
     def _get_revision(self):
-        # Cache the result as we can reasonably assume it won't change during
-        # runtime (this is LocalPin after all; descendents that deal with
-        # remote Pis should inherit from Pin instead)
-        with io.open('/proc/cpuinfo', 'r') as f:
-            for line in f:
-                if line.startswith('Revision'):
-                    revision = line.split(':')[1].strip().lower()
-                    overvolted = revision.startswith('100')
-                    if overvolted:
-                        revision = revision[-4:]
-                    return revision
-        raise PinUnknownPi('unable to locate Pi revision in /proc/cpuinfo')
+        revision = None
+        try:
+            with io.open('/proc/device-tree/system/linux,revision', 'rb') as f:
+                revision = hex(struct.unpack(nstr('>L'), f.read(4))[0])[2:]
+        except IOError as e:
+            if e.errno != errno.ENOENT:
+                raise e
+            with io.open('/proc/cpuinfo', 'r') as f:
+                for line in f:
+                    if line.startswith('Revision'):
+                        revision = line.split(':')[1].strip().lower()
+        if revision is not None:
+            overvolted = revision.startswith('100')
+            if overvolted:
+                revision = revision[-4:]
+            return int(revision, base=16)
+        raise PinUnknownPi('unable to locate Pi revision in /proc/device-tree or /proc/cpuinfo')
+
+    @staticmethod
+    def ticks():
+        return monotonic()
+
+    @staticmethod
+    def ticks_diff(later, earlier):
+        # NOTE: technically the guarantee to always return a positive result
+        # cannot be maintained in versions where monotonic() is not available
+        # and we fall back to time(). However, in that situation we've no
+        # access to a true monotonic source, and no idea how far the clock has
+        # skipped back so this is the best we can do anyway.
+        return max(0, later - earlier)
 
 
 class LocalPiPin(PiPin):
     """
-    Abstract base class representing a multi-function GPIO pin attached to the
-    local Raspberry Pi.
+    Extends :class:`~gpiozero.pins.pi.PiPin`. Abstract base class representing
+    a multi-function GPIO pin attached to the local Raspberry Pi.
     """
-    pass
+    def _call_when_changed(self, ticks=None, state=None):
+        """
+        Overridden to provide default ticks from the local Pi factory.
+
+        .. warning::
+
+            The local pin factory uses a seconds-based monotonic value for
+            its ticks but you *must not* rely upon this behaviour. Ticks are
+            an opaque value that should only be compared with the associated
+            :meth:`Factory.ticks_diff` method.
+        """
+        super(LocalPiPin, self)._call_when_changed(
+            self._factory.ticks() if ticks is None else ticks,
+            self.state if state is None else state)
 
 
 class LocalPiHardwareSPI(SPI, Device):
@@ -96,7 +164,7 @@ class LocalPiHardwareSPI(SPI, Device):
         self._interface.max_speed_hz = 500000
 
     def close(self):
-        if getattr(self, '_interface', None):
+        if self._interface is not None:
             self._interface.close()
         self._interface = None
         self.pin_factory.release_all(self)
@@ -167,7 +235,7 @@ class LocalPiSoftwareSPI(SPI, OutputDevice):
             )
 
     def close(self):
-        if getattr(self, '_bus', None):
+        if self._bus is not None:
             self._bus.close()
         self._bus = None
         super(LocalPiSoftwareSPI, self).close()

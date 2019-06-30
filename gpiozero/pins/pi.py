@@ -1,3 +1,32 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
@@ -45,8 +74,9 @@ SPI_HARDWARE_PINS = {
 
 class PiFactory(Factory):
     """
-    Abstract base class representing hardware attached to a Raspberry Pi. This
-    forms the base of :class:`~gpiozero.pins.local.LocalPiFactory`.
+    Extends :class:`~gpiozero.Factory`. Abstract base class representing
+    hardware attached to a Raspberry Pi. This forms the base of
+    :class:`~gpiozero.pins.local.LocalPiFactory`.
     """
     def __init__(self):
         super(PiFactory, self).__init__()
@@ -65,22 +95,22 @@ class PiFactory(Factory):
             pin.close()
         self.pins.clear()
 
+    def reserve_pins(self, requester, *pins):
+        super(PiFactory, self).reserve_pins(
+            requester, *(self.pi_info.to_gpio(pin) for pin in pins))
+
+    def release_pins(self, reserver, *pins):
+        super(PiFactory, self).release_pins(
+            reserver, *(self.pi_info.to_gpio(pin) for pin in pins))
+
     def pin(self, spec):
-        n = self._to_gpio(spec)
+        n = self.pi_info.to_gpio(spec)
         try:
             pin = self.pins[n]
         except KeyError:
             pin = self.pin_class(self, n)
             self.pins[n] = pin
         return pin
-
-    def _to_gpio(self, spec):
-        """
-        Converts the pin *spec* to a GPIO port number.
-        """
-        if not 0 <= spec < 54:
-            raise PinInvalidPin('invalid GPIO port %d specified (range 0..53) ' % spec)
-        return spec
 
     def _get_revision(self):
         raise NotImplementedError
@@ -95,13 +125,14 @@ class PiFactory(Factory):
         Returns an SPI interface, for the specified SPI *port* and *device*, or
         for the specified pins (*clock_pin*, *mosi_pin*, *miso_pin*, and
         *select_pin*).  Only one of the schemes can be used; attempting to mix
-        *port* and *device* with pin numbers will raise :exc:`SPIBadArgs`.
+        *port* and *device* with pin numbers will raise
+        :exc:`~gpiozero.SPIBadArgs`.
 
         If the pins specified match the hardware SPI pins (clock on GPIO11,
         MOSI on GPIO10, MISO on GPIO9, and chip select on GPIO8 or GPIO7), and
-        the spidev module can be imported, a :class:`SPIHardwareInterface`
-        instance will be returned. Otherwise, a :class:`SPISoftwareInterface`
-        will be returned which will use simple bit-banging to communicate.
+        the spidev module can be imported, a hardware based interface (using
+        spidev) will be returned. Otherwise, a software based interface will be
+        returned which will use simple bit-banging to communicate.
 
         Both interfaces have the same API, support clock polarity and phase
         attributes, and can handle half and full duplex communications, but the
@@ -131,14 +162,6 @@ class PiFactory(Factory):
                             'failed to initialize hardware SPI, falling back to '
                             'software (error was: %s)' % str(e)))
                     break
-        # Convert all pin arguments to integer GPIO numbers. This is necessary
-        # to ensure the shared-key for shared implementations get matched
-        # correctly, and is a bit of a hack for the pigpio bit-bang
-        # implementation which just wants the pin numbers too.
-        spi_args = {
-            key: pin.number if isinstance(pin, Pin) else pin
-            for key, pin in spi_args.items()
-            }
         return self.spi_classes[('software', shared)](self, **spi_args)
 
     def _extract_spi_args(self, **kwargs):
@@ -173,7 +196,7 @@ class PiFactory(Factory):
             spi_args = pin_defaults
         elif set(spi_args) <= set(pin_defaults):
             spi_args = {
-                key: self._to_gpio(spi_args.get(key, default))
+                key: self.pi_info.to_gpio(spi_args.get(key, default))
                 for key, default in pin_defaults.items()
                 }
         elif set(spi_args) <= set(dev_defaults):
@@ -181,9 +204,11 @@ class PiFactory(Factory):
                 key: spi_args.get(key, default)
                 for key, default in dev_defaults.items()
                 }
-            if spi_args['port'] != 0:
-                raise SPIBadArgs('port 0 is the only valid SPI port')
-            selected_hw = SPI_HARDWARE_PINS[spi_args['port']]
+            try:
+                selected_hw = SPI_HARDWARE_PINS[spi_args['port']]
+            except KeyError:
+                raise SPIBadArgs(
+                    'port %d is not a valid SPI port' % spi_args['port'])
             try:
                 selected_hw['select'][spi_args['device']]
             except IndexError:
@@ -204,9 +229,9 @@ class PiFactory(Factory):
 
 class PiPin(Pin):
     """
-    Abstract base class representing a multi-function GPIO pin attached to a
-    Raspberry Pi. This overrides several methods in the abstract base
-    :class:`~gpiozero.Pin`. Descendents must override the following methods:
+    Extends :class:`~gpiozero.Pin`. Abstract base class representing a
+    multi-function GPIO pin attached to a Raspberry Pi. Descendents *must*
+    override the following methods:
 
     * :meth:`_get_function`
     * :meth:`_set_function`
@@ -255,20 +280,20 @@ class PiPin(Pin):
     def factory(self):
         return self._factory
 
-    def _call_when_changed(self):
+    def _call_when_changed(self, ticks, state):
         """
         Called to fire the :attr:`when_changed` event handler; override this
         in descendents if additional (currently redundant) parameters need
         to be passed.
         """
-        method = self.when_changed()
+        method = self._when_changed()
         if method is None:
             self.when_changed = None
         else:
-            method()
+            method(ticks, state)
 
     def _get_when_changed(self):
-        return self._when_changed
+        return None if self._when_changed is None else self._when_changed()
 
     def _set_when_changed(self, value):
         with self._when_changed_lock:
@@ -302,4 +327,3 @@ class PiPin(Pin):
         on pin :attr:`number`.
         """
         raise NotImplementedError
-

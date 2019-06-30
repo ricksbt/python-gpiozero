@@ -1,3 +1,34 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2018-2019 Ben Nuttall <ben@bennuttall.com>
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016-2019 Andrew Scheller <github@loowis.durge.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
@@ -9,9 +40,10 @@ str = type('')
 
 import pytest
 from math import sin, cos, radians
-from time import time
+from time import time, sleep
 from itertools import islice
 
+from gpiozero import Device, LED, Button, Robot
 from gpiozero.tools import *
 try:
     from math import isclose
@@ -27,9 +59,67 @@ except ImportError:
     from gpiozero.compat import median
 
 
-def test_negated():
+epsilon = 0.01  # time to sleep after setting source before checking value
+
+def test_set_source_by_value(mock_factory):
+    with LED(2) as led, Button(3) as btn:
+        led.source_delay = 0
+        assert not led.value
+        assert not btn.value
+        led.source = btn.values
+        sleep(epsilon)
+        assert not led.value
+        assert not btn.value
+        btn.pin.drive_low()
+        sleep(epsilon)
+        assert led.value
+        assert btn.value
+
+def test_set_source_by_device(mock_factory):
+    with LED(2) as led, Button(3) as btn:
+        led.source_delay = 0
+        assert not led.value
+        assert not btn.value
+        led.source = btn
+        sleep(epsilon)
+        assert not led.value
+        assert not btn.value
+        btn.pin.drive_low()
+        sleep(epsilon)
+        assert led.value
+        assert btn.value
+
+def test_negated(mock_factory):
     assert list(negated(())) == []
     assert list(negated((True, True, False, False))) == [False, False, True, True]
+
+def test_negated_source_by_value(mock_factory):
+    with LED(2) as led, Button(3) as btn:
+        led.source_delay = 0
+        assert not led.value
+        assert not btn.value
+        led.source = negated(btn.values)
+        sleep(epsilon)
+        assert led.value
+        assert not btn.value
+        btn.pin.drive_low()
+        sleep(epsilon)
+        assert not led.value
+        assert btn.value
+
+def test_negated_source_by_device(mock_factory):
+    with LED(2) as led, Button(3) as btn:
+        led.source_delay = 0
+        assert not led.value
+        assert not btn.value
+        led.source = negated(btn)
+        sleep(epsilon)
+        assert led.value
+        assert not btn.value
+        btn.pin.drive_low()
+        sleep(epsilon)
+        assert not led.value
+        assert btn.value
 
 def test_inverted():
     with pytest.raises(ValueError):
@@ -87,7 +177,7 @@ def test_clamped():
     assert list(clamped((-2, -1, -0.5, 0, 0.5, 1, 2), -1, 1)) == [-1, -1, -0.5, 0, 0.5, 1, 1]
     assert list(clamped((-2, -1, -0.5, 0, 0.5, 1, 2), -2, 2)) == [-2, -1, -0.5, 0, 0.5, 1, 2]
 
-def test_absoluted():
+def test_absoluted(mock_factory):
     assert list(absoluted(())) == []
     assert list(absoluted((-2, -1, 0, 1, 2))) == [2, 1, 0, 1, 2]
 
@@ -296,6 +386,7 @@ def test_cos_values():
 
 def test_ramping_values():
     assert list(islice(ramping_values(2), 2)) == [0, 1]
+    assert list(islice(ramping_values(3), 5)) == [0, 2/3, 2/3, 0, 2/3]
     assert list(islice(ramping_values(4), 4)) == [0, 0.5, 1, 0.5]
     assert list(islice(ramping_values(8), 8)) == [0, 0.25, 0.5, 0.75, 1, 0.75, 0.5, 0.25]
     firstval = None
@@ -315,3 +406,31 @@ def test_ramping_values():
             else:
                 if i % period == 0:
                     assert v == firstval
+
+def test_zip_values(mock_factory):
+    with Button(2) as btn1, Button(3) as btn2:
+        zv = zip_values(btn1, btn2)
+        assert next(zv) == (False, False)
+        btn1.pin.drive_low()
+        assert next(zv) == (True, False)
+        btn2.pin.drive_low()
+        assert next(zv) == (True, True)
+        btn1.pin.drive_high()
+        assert next(zv) == (False, True)
+        btn2.pin.drive_high()
+        assert next(zv) == (False, False)
+    with Button(2) as btn1, Button(3) as btn2, Button(4) as btn3, Button(5) as btn4:
+        zv = zip_values(btn1, btn2, btn3, btn4)
+        assert next(zv) == (False, False, False, False)
+        btn1.pin.drive_low()
+        btn3.pin.drive_low()
+        assert next(zv) == (True, False, True, False)
+        btn2.pin.drive_low()
+        btn4.pin.drive_low()
+        assert next(zv) == (True, True, True, True)
+        btn1.pin.drive_high()
+        btn2.pin.drive_high()
+        btn3.pin.drive_high()
+        btn4.pin.drive_high()
+        sleep(epsilon)
+        assert next(zv) == (False, False, False, False)

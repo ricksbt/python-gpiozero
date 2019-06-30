@@ -1,3 +1,34 @@
+# GPIO Zero: a library for controlling the Raspberry Pi's GPIO pins
+# Copyright (c) 2018-2019 Ben Nuttall <ben@bennuttall.com>
+# Copyright (c) 2016-2019 Dave Jones <dave@waveform.org.uk>
+# Copyright (c) 2016-2018 Andrew Scheller <github@loowis.durge.org>
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+#
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+#
+# * Neither the name of the copyright holder nor the names of its contributors
+#   may be used to endorse or promote products derived from this software
+#   without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+# POSSIBILITY OF SUCH DAMAGE.
+
 from __future__ import (
     unicode_literals,
     absolute_import,
@@ -14,6 +45,7 @@ from operator import attrgetter
 from collections import namedtuple
 
 from ..exc import PinUnknownPi, PinMultiplePins, PinNoPins, PinInvalidPin
+from ..devices import Device
 
 
 # Some useful constants for describing pins
@@ -122,7 +154,7 @@ BPLUS_BOARD = """\
 {style:white on green}| {J8:{style} col2}{style:white on green} J8     {style:black on white}+===={style:reset}
 {style:white on green}| {J8:{style} col1}{style:white on green}        {style:black on white}| USB{style:reset}
 {style:white on green}|                             {style:black on white}+===={style:reset}
-{style:white on green}|      {style:bold}Pi Model {model:4s}V{pcb_revision:3s}{style:normal}          |{style:reset}
+{style:white on green}|      {style:bold}Pi Model {model:4s}V{pcb_revision:3s}{style:normal}         |{style:reset}
 {style:white on green}|      {style:on black}+----+{style:on green}                 {style:black on white}+===={style:reset}
 {style:white on green}| {style:on black}|D|{style:on green}  {style:on black}|SoC |{style:on green}                 {style:black on white}| USB{style:reset}
 {style:white on green}| {style:on black}|S|{style:on green}  {style:on black}|    |{style:on green}                 {style:black on white}+===={style:reset}
@@ -132,16 +164,61 @@ BPLUS_BOARD = """\
 {style:white on green}| {style:black on white}pwr{style:white on green}        {style:black on white}|HDMI|{style:white on green} {style:on black}|I||A|{style:on green}  {style:black on white}+======{style:reset}
 {style:white on green}`-{style:black on white}| |{style:white on green}--------{style:black on white}|    |{style:white on green}----{style:on black}|V|{style:on green}-------'{style:reset}"""
 
+B3PLUS_BOARD = """\
+{style:white on green},--------------------------------.{style:reset}
+{style:white on green}| {J8:{style} col2}{style:white on green} J8     {style:black on white}+===={style:reset}
+{style:white on green}| {J8:{style} col1}{style:white on green}  PoE   {style:black on white}| USB{style:reset}
+{style:white on green}| {style:black on white} Wi {style:white on green}                   {style:white on black}oo{style:on green}   {style:black on white}+===={style:reset}
+{style:white on green}| {style:black on white} Fi {style:white on green} {style:bold}Pi Model {model:4s}V{pcb_revision:3s}{style:normal} {style:white on black}oo{style:on green}      |{style:reset}
+{style:white on green}|        {style:black on white},----.{style:on green}               {style:black on white}+===={style:reset}
+{style:white on green}| {style:on black}|D|{style:on green}    {style:black on white}|SoC |{style:on green}               {style:black on white}| USB{style:reset}
+{style:white on green}| {style:on black}|S|{style:on green}    {style:black on white}|    |{style:on green}               {style:black on white}+===={style:reset}
+{style:white on green}| {style:on black}|I|{style:on green}    {style:black on white}`----'{style:white on green}                  |{style:reset}
+{style:white on green}|                   {style:on black}|C|{style:on green}     {style:black on white}+======{style:reset}
+{style:white on green}|                   {style:on black}|S|{style:on green}     {style:black on white}|   Net{style:reset}
+{style:white on green}| {style:black on white}pwr{style:white on green}        {style:black on white}|HDMI|{style:white on green} {style:on black}|I||A|{style:on green}  {style:black on white}+======{style:reset}
+{style:white on green}`-{style:black on white}| |{style:white on green}--------{style:black on white}|    |{style:white on green}----{style:on black}|V|{style:on green}-------'{style:reset}"""
+
+B4_BOARD = """\
+{style:white on green},--------------------------------.{style:reset}
+{style:white on green}| {J8:{style} col2}{style:white on green} J8   {style:black on white}+======{style:reset}
+{style:white on green}| {J8:{style} col1}{style:white on green}  PoE {style:black on white}|   Net{style:reset}
+{style:white on green}| {style:black on white} Wi {style:white on green}                   {style:white on black}oo{style:on green} {style:black on white}+======{style:reset}
+{style:white on green}| {style:black on white} Fi {style:white on green} {style:bold}Pi Model {model:4s}V{pcb_revision:3s}{style:normal} {style:white on black}oo{style:on green}      |{style:reset}
+{style:white on green}|        {style:black on white},----.{style:on green}               {style:black on white}+===={style:reset}
+{style:white on green}| {style:on black}|D|{style:on green}    {style:black on white}|SoC |{style:on green}               {style:black on white}|USB3{style:reset}
+{style:white on green}| {style:on black}|S|{style:on green}    {style:black on white}|    |{style:on green}               {style:black on white}+===={style:reset}
+{style:white on green}| {style:on black}|I|{style:on green}    {style:black on white}`----'{style:white on green}                  |{style:reset}
+{style:white on green}|                   {style:on black}|C|{style:on green}       {style:black on white}+===={style:reset}
+{style:white on green}|                   {style:on black}|S|{style:on green}       {style:black on white}|USB2{style:reset}
+{style:white on green}| {style:black on white}pwr{style:white on green}   {style:black on white}|HD|{style:white on green}   {style:black on white}|HD|{style:white on green} {style:on black}|I||A|{style:on green}    {style:black on white}+===={style:reset}
+{style:white on green}`-{style:black on white}| |{style:white on green}---{style:black on white}|MI|{style:white on green}---{style:black on white}|MI|{style:white on green}----{style:on black}|V|{style:on green}-------'{style:reset}"""
+
 APLUS_BOARD = """\
 {style:white on green},--------------------------.{style:reset}
 {style:white on green}| {J8:{style} col2}{style:white on green} J8  |{style:reset}
 {style:white on green}| {J8:{style} col1}{style:white on green}     |{style:reset}
 {style:white on green}|                          |{style:reset}
-{style:white on green}|      {style:bold}Pi Model {model:3s}V{pcb_revision:3s}{style:normal}    |{style:reset}
+{style:white on green}|      {style:bold}Pi Model {model:4s}V{pcb_revision:3s}{style:normal}   |{style:reset}
 {style:white on green}|      {style:on black}+----+{style:on green}           {style:black on white}+===={style:reset}
 {style:white on green}| {style:on black}|D|{style:on green}  {style:on black}|SoC |{style:on green}           {style:black on white}| USB{style:reset}
 {style:white on green}| {style:on black}|S|{style:on green}  {style:on black}|    |{style:on green}           {style:black on white}+===={style:reset}
 {style:white on green}| {style:on black}|I|{style:on green}  {style:on black}+----+{style:on green}              |{style:reset}
+{style:white on green}|                   {style:on black}|C|{style:on green}    |{style:reset}
+{style:white on green}|                   {style:on black}|S|{style:on green}    |{style:reset}
+{style:white on green}| {style:black on white}pwr{style:white on green}        {style:black on white}|HDMI|{style:white on green} {style:on black}|I||A|{style:on green} |{style:reset}
+{style:white on green}`-{style:black on white}| |{style:white on green}--------{style:black on white}|    |{style:white on green}----{style:on black}|V|{style:on green}-'{style:reset}"""
+
+A3PLUS_BOARD = """\
+{style:white on green},--------------------------.{style:reset}
+{style:white on green}| {J8:{style} col2}{style:white on green} J8  |{style:reset}
+{style:white on green}| {J8:{style} col1}{style:white on green}     |{style:reset}
+{style:white on green}| {style:black on white} Wi {style:white on green}                     |{style:reset}
+{style:white on green}| {style:black on white} Fi {style:white on green} {style:bold}Pi Model {model:4s}V{pcb_revision:3s}{style:normal}   |{style:reset}
+{style:white on green}|        {style:black on white},----.{style:on green}         {style:black on white}+===={style:reset}
+{style:white on green}| {style:on black}|D|{style:on green}    {style:black on white}|SoC |{style:on green}         {style:black on white}| USB{style:reset}
+{style:white on green}| {style:on black}|S|{style:on green}    {style:black on white}|    |{style:on green}         {style:black on white}+===={style:reset}
+{style:white on green}| {style:on black}|I|{style:on green}    {style:black on white}`----'{style:white on green}            |{style:reset}
 {style:white on green}|                   {style:on black}|C|{style:on green}    |{style:reset}
 {style:white on green}|                   {style:on black}|S|{style:on green}    |{style:reset}
 {style:white on green}| {style:black on white}pwr{style:white on green}        {style:black on white}|HDMI|{style:white on green} {style:on black}|I||A|{style:on green} |{style:reset}
@@ -166,13 +243,14 @@ ZERO13_BOARD = """\
 {style:white on green}`---{style:black on white}|    |{style:white on green}--------{style:black on white}| |{style:white on green}-{style:black on white}| |{style:white on green}-'{style:reset}"""
 
 CM_BOARD = """\
-{style:white on green}+-----------------------------------------------------------------------------------------------------------------------+{style:reset}
-{style:white on green}| Raspberry Pi Compute Module                                                                                           |{style:reset}
-{style:white on green}|                                                                                                                       |{style:reset}
-{style:white on green}| You were expecting more detail? Sorry, the Compute Module's a bit hard to do right now!                               |{style:reset}
-{style:white on green}|                                                                                                                       |{style:reset}
-{style:white on green}|                                                                                                                       |{style:reset}
-{style:white on green}||||||||||||||||||||-||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||{style:reset}"""
+{style:white on green}+---------------------------------------+{style:reset}
+{style:white on green}| {style:yellow on black}O{style:bold white on green}  Raspberry Pi {model:4s}                {style:normal yellow on black}O{style:white on green} |{style:reset}
+ {style:white on green})   Version {pcb_revision:3s}     {style:on black}+---+{style:on green}             ({style:reset}
+{style:white on green}|                    {style:on black}|SoC|{style:on green}              |{style:reset}
+ {style:white on green})                   {style:on black}+---+{style:on green}             ({style:reset}
+{style:white on green}| {style:on black}O{style:on green}   _                               {style:on black}O{style:on green} |{style:reset}
+{style:white on green}||||||{style:reset} {style:white on green}||||||||||||||||||||||||||||||||||{style:reset}
+"""
 
 # Pin maps for various board revisions and headers
 
@@ -365,6 +443,7 @@ CM3_SODIMM.update({
 # http://elinux.org/RPi_HardwareHistory
 # http://elinux.org/RPi_Low-level_peripherals
 # https://git.drogon.net/?p=wiringPi;a=blob;f=wiringPi/wiringPi.c#l807
+# https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
 
 PI_REVISIONS = {
     # rev     model    pcb_rev released soc        manufacturer ram   storage    usb eth wifi   bt     csi dsi headers                         board
@@ -458,7 +537,8 @@ class Style(object):
                         else:
                             codes.append(40 + self.colors[spec])
                     except KeyError:
-                        raise ValueError('invalid format specification "%s"' % spec)
+                        raise ValueError(
+                            'invalid format specification "%s"' % spec)
         if self.color:
             return '\x1b[%sm' % (';'.join(str(code) for code in codes))
         else:
@@ -498,10 +578,10 @@ class PinInfo(namedtuple('PinInfo', (
     .. attribute:: pull_up
 
         A bool indicating whether the pin has a physical pull-up resistor
-        permanently attached (this is usually ``False`` but GPIO2 and GPIO3
-        are *usually* ``True``). This is used internally by gpiozero to raise
-        errors when pull-down is requested on a pin with a physical pull-up
-        resistor.
+        permanently attached (this is usually :data:`False` but GPIO2 and GPIO3
+        are *usually* :data:`True`). This is used internally by gpiozero to
+        raise errors when pull-down is requested on a pin with a physical
+        pull-up resistor.
 
     .. attribute:: row
 
@@ -534,9 +614,9 @@ class HeaderInfo(namedtuple('HeaderInfo', (
         print('{0:col2}'.format(pi_info().headers['P1']))
         print('{0:row1}'.format(pi_info().headers['P1']))
 
-    `'color'` and `'mono'` can be prefixed to format specifications to force
-    the use of `ANSI color codes`_. If neither is specified, ANSI codes will
-    only be used if stdout is detected to be a tty::
+    "color" and "mono" can be prefixed to format specifications to force the
+    use of `ANSI color codes`_. If neither is specified, ANSI codes will only
+    be used if stdout is detected to be a tty::
 
         print('{0:color row2}'.format(pi_info().headers['J8'])) # force use of ANSI codes
         print('{0:mono row2}'.format(pi_info().headers['P1'])) # force plain ASCII
@@ -652,10 +732,10 @@ class HeaderInfo(namedtuple('HeaderInfo', (
         """
         Pretty-print a diagram of the header pins.
 
-        If *color* is ``None`` (the default, the diagram will include ANSI
+        If *color* is :data:`None` (the default, the diagram will include ANSI
         color codes if stdout is a color-capable terminal). Otherwise *color*
-        can be set to ``True`` or ``False`` to force color or monochrome
-        output.
+        can be set to :data:`True` or :data:`False` to force color or
+        monochrome output.
         """
         print('{0:{style} full}'.format(self, style=Style(color)))
 
@@ -693,9 +773,9 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
         print('{0:specs}'.format(pi_info()))
         print('{0:headers}'.format(pi_info()))
 
-    `'color'` and `'mono'` can be prefixed to format specifications to force
-    the use of `ANSI color codes`_. If neither is specified, ANSI codes will
-    only be used if stdout is detected to be a tty::
+    "color" and "mono" can be prefixed to format specifications to force the
+    use of `ANSI color codes`_. If neither is specified, ANSI codes will only
+    be used if stdout is detected to be a tty::
 
         print('{0:color board}'.format(pi_info())) # force use of ANSI codes
         print('{0:mono board}'.format(pi_info())) # force plain ASCII
@@ -709,6 +789,8 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
     .. automethod:: pprint
 
     .. automethod:: pulled_up
+
+    .. automethod:: to_gpio
 
     .. attribute:: revision
 
@@ -838,10 +920,10 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
             # uuuuuuuu - Unused
             # F        - New flag (1=valid new-style revision, 0=old-style)
             # MMM      - Memory size (0=256, 1=512, 2=1024)
-            # CCCC     - Manufacturer (0=Sony, 1=Egoman, 2=Embest, 3=Sony Japan)
+            # CCCC     - Manufacturer (0=Sony, 1=Egoman, 2=Embest, 3=Sony Japan, 4=Embest, 5=Stadium)
             # PPPP     - Processor (0=2835, 1=2836, 2=2837)
             # TTTTTTTT - Type (0=A, 1=B, 2=A+, 3=B+, 4=2B, 5=Alpha (??), 6=CM,
-            #                  8=3B, 9=Zero, 10=CM3, 12=Zero W, 13=3B+)
+            #                  8=3B, 9=Zero, 10=CM3, 12=Zero W, 13=3B+, 14=3A+)
             # RRRR     - Revision (0, 1, 2, etc.)
             revcode_memory       = (revision & 0x700000) >> 20
             revcode_manufacturer = (revision & 0xf0000)  >> 16
@@ -860,7 +942,10 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     9:  'Zero',
                     10: 'CM3',
                     12: 'Zero W',
-                    13:  '3B+',
+                    13: '3B+',
+                    14: '3A+',
+                    16: 'CM3+',
+                    17: '4B',
                     }.get(revcode_type, '???')
                 if model in ('A', 'B'):
                     pcb_revision = {
@@ -874,17 +959,22 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     0: 'BCM2835',
                     1: 'BCM2836',
                     2: 'BCM2837',
+                    3: 'BCM2711',
                     }.get(revcode_processor, 'Unknown')
                 manufacturer = {
                     0: 'Sony',
                     1: 'Egoman',
                     2: 'Embest',
                     3: 'Sony Japan',
+                    4: 'Embest',
+                    5: 'Stadium',
                     }.get(revcode_manufacturer, 'Unknown')
                 memory = {
                     0: 256,
                     1: 512,
                     2: 1024,
+                    3: 2048,
+                    4: 4096,
                     }.get(revcode_memory, None)
                 released = {
                     'A':      '2013Q1',
@@ -898,12 +988,16 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     'CM3':    '2017Q1',
                     'Zero W': '2017Q1',
                     '3B+':    '2018Q1',
+                    '3A+':    '2018Q4',
+                    'CM3+':   '2019Q1',
+                    '4B':     '2019Q2',
                     }.get(model, 'Unknown')
                 storage = {
-                    'A':   'SD',
-                    'B':   'SD',
-                    'CM':  'eMMC',
-                    'CM3': 'eMMC / off-board',
+                    'A':    'SD',
+                    'B':    'SD',
+                    'CM':   'eMMC',
+                    'CM3':  'eMMC / off-board',
+                    'CM3+': 'eMMC / off-board',
                     }.get(model, 'MicroSD')
                 usb = {
                     'A':      1,
@@ -911,8 +1005,10 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     'Zero':   1,
                     'Zero W': 1,
                     'B':      2,
-                    'CM':     0,
+                    'CM':     1,
                     'CM3':    1,
+                    '3A+':    1,
+                    'CM3+':   1,
                     }.get(model, 4)
                 ethernet = {
                     'A':      0,
@@ -921,32 +1017,43 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     'Zero W': 0,
                     'CM':     0,
                     'CM3':    0,
+                    '3A+':    0,
+                    'CM3+':   0,
                     }.get(model, 1)
                 wifi = {
                     '3B':     True,
                     'Zero W': True,
                     '3B+':    True,
+                    '3A+':    True,
+                    '4B':     True,
                     }.get(model, False)
                 bluetooth = {
                     '3B':     True,
                     'Zero W': True,
                     '3B+':    True,
+                    '3A+':    True,
+                    '4B':     True,
                     }.get(model, False)
                 csi = {
                     'Zero':   0 if pcb_revision == '1.0' else 1,
                     'Zero W': 1,
                     'CM':     2,
                     'CM3':    2,
+                    'CM3+':   2,
                     }.get(model, 1)
                 dsi = {
                     'Zero':   0,
                     'Zero W': 0,
+                    'CM':     2,
+                    'CM3':    2,
+                    'CM3+':   2,
                     }.get(model, csi)
                 headers = {
-                    'A':   {'P1': REV2_P1, 'P5': REV2_P5},
-                    'B':   {'P1': REV1_P1} if pcb_revision == '1.0' else {'P1': REV2_P1, 'P5': REV2_P5},
-                    'CM':  {'SODIMM': CM_SODIMM},
-                    'CM3': {'SODIMM': CM3_SODIMM},
+                    'A':    {'P1': REV2_P1, 'P5': REV2_P5},
+                    'B':    {'P1': REV1_P1} if pcb_revision == '1.0' else {'P1': REV2_P1, 'P5': REV2_P5},
+                    'CM':   {'SODIMM': CM_SODIMM},
+                    'CM3':  {'SODIMM': CM3_SODIMM},
+                    'CM3+': {'SODIMM': CM3_SODIMM},
                     }.get(model, {'J8': PLUS_J8})
                 board = {
                     'A':      A_BOARD,
@@ -954,8 +1061,12 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     'A+':     APLUS_BOARD,
                     'CM':     CM_BOARD,
                     'CM3':    CM_BOARD,
+                    'CM3+':   CM_BOARD,
                     'Zero':   ZERO12_BOARD if pcb_revision == '1.2' else ZERO13_BOARD,
                     'Zero W': ZERO13_BOARD,
+                    '3A+':    A3PLUS_BOARD,
+                    '3B+':    B3PLUS_BOARD,
+                    '4B':     B4_BOARD,
                     }.get(model, BPLUS_BOARD)
             except KeyError:
                 raise PinUnknownPi('unable to parse new-style revision "%x"' % revision)
@@ -987,7 +1098,7 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
                     number=number, function=function, pull_up=pull_up,
                     row=row + 1, col=col + 1)
                 for number, (function, pull_up) in header_data.items()
-                for row, col in (divmod(number, 2),)
+                for row, col in (divmod(number - 1, 2),)
                 })
             for header, header_data in headers.items()
             }
@@ -1068,6 +1179,101 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
         else:
             return self.headers[header].pins[number].pull_up
 
+    def to_gpio(self, spec):
+        """
+        Parses a pin *spec*, returning the equivalent Broadcom GPIO port number
+        or raising a :exc:`ValueError` exception if the spec does not represent
+        a GPIO port.
+
+        The *spec* may be given in any of the following forms:
+
+        * An integer, which will be accepted as a GPIO number
+        * 'GPIOn' where n is the GPIO number
+        * 'WPIn' where n is the `wiringPi`_ pin number
+        * 'BCMn' where n is the GPIO number (alias of GPIOn)
+        * 'BOARDn' where n is the physical pin number on the main header
+        * 'h:n' where h is the header name and n is the physical pin number
+          (for example J8:5 is physical pin 5 on header J8, which is the main
+          header on modern Raspberry Pis)
+
+        .. _wiringPi: http://wiringpi.com/pins/
+        """
+        if isinstance(spec, int):
+            if not 0 <= spec < 54:
+                raise PinInvalidPin('invalid GPIO port %d specified '
+                                    '(range 0..53) ' % spec)
+            return spec
+        else:
+            if isinstance(spec, bytes):
+                spec = spec.decode('ascii')
+            spec = spec.upper()
+            if spec.isdigit():
+                return self.to_gpio(int(spec))
+            if spec.startswith('GPIO') and spec[4:].isdigit():
+                return self.to_gpio(int(spec[4:]))
+            elif spec.startswith('BCM') and spec[3:].isdigit():
+                return self.to_gpio(int(spec[3:]))
+            elif spec.startswith('WPI') and spec[3:].isdigit():
+                main_head = 'P1' if 'P1' in self.headers else 'J8'
+                try:
+                    return self.to_gpio({
+                        0:  '%s:11' % main_head,
+                        1:  '%s:12' % main_head,
+                        2:  '%s:13' % main_head,
+                        3:  '%s:15' % main_head,
+                        4:  '%s:16' % main_head,
+                        5:  '%s:18' % main_head,
+                        6:  '%s:22' % main_head,
+                        7:  '%s:7'  % main_head,
+                        8:  '%s:3'  % main_head,
+                        9:  '%s:5'  % main_head,
+                        10: '%s:24' % main_head,
+                        11: '%s:26' % main_head,
+                        12: '%s:19' % main_head,
+                        13: '%s:21' % main_head,
+                        14: '%s:23' % main_head,
+                        15: '%s:8'  % main_head,
+                        16: '%s:10' % main_head,
+                        17: 'P5:3',
+                        18: 'P5:4',
+                        19: 'P5:5',
+                        20: 'P5:6',
+                        21: '%s:29' % main_head,
+                        22: '%s:31' % main_head,
+                        23: '%s:33' % main_head,
+                        24: '%s:35' % main_head,
+                        25: '%s:37' % main_head,
+                        26: '%s:32' % main_head,
+                        27: '%s:36' % main_head,
+                        28: '%s:38' % main_head,
+                        29: '%s:40' % main_head,
+                        30: '%s:27' % main_head,
+                        31: '%s:28' % main_head,
+                        }[int(spec[3:])])
+                except KeyError:
+                    raise PinInvalidPin('%s is not a valid wiringPi pin' % spec)
+            elif ':' in spec:
+                header, pin = spec.split(':', 1)
+                if pin.isdigit():
+                    try:
+                        header = self.headers[header]
+                    except KeyError:
+                        raise PinInvalidPin(
+                            'there is no %s header on this Pi' % header)
+                    try:
+                        function = header.pins[int(pin)].function
+                    except KeyError:
+                        raise PinInvalidPin(
+                            'no such pin %s on header %s' % (pin, header.name))
+                    if function.startswith('GPIO') and function[4:].isdigit():
+                        return self.to_gpio(int(function[4:]))
+                    else:
+                        raise PinInvalidPin('%s is not a GPIO pin' % spec)
+            elif spec.startswith('BOARD') and spec[5:].isdigit():
+                main_head = ({'P1', 'J8', 'SODIMM'} & set(self.headers)).pop()
+                return self.to_gpio('%s:%s' % (main_head, spec[5:]))
+            raise PinInvalidPin('%s is not a valid pin spec' % spec)
+
     def __repr__(self):
         return '{cls}({fields})'.format(
             cls=self.__class__.__name__,
@@ -1122,9 +1328,9 @@ class PiBoardInfo(namedtuple('PiBoardInfo', (
         """
         Pretty-print a representation of the board along with header diagrams.
 
-        If *color* is ``None`` (the default), the diagram will include ANSI
+        If *color* is :data:`None` (the default), the diagram will include ANSI
         color codes if stdout is a color-capable terminal. Otherwise *color*
-        can be set to ``True`` or ``False`` to force color or monochrome
+        can be set to :data:`True` or :data:`False` to force color or monochrome
         output.
         """
         print('{0:{style} full}'.format(self, style=Style(color)))
@@ -1137,13 +1343,12 @@ def pi_info(revision=None):
 
     :param str revision:
         The revision of the Pi to return information about. If this is omitted
-        or ``None`` (the default), then the library will attempt to determine
+        or :data:`None` (the default), then the library will attempt to determine
         the model of Pi it is running on and return information about that.
     """
     if revision is None:
-        # The reason this import is located here is to avoid a circular
-        # dependency; devices->pins.local->pins.data->devices
-        from ..devices import Device
+        if Device.pin_factory is None:
+            Device.pin_factory = Device._default_pin_factory()
         result = Device.pin_factory.pi_info
         if result is None:
             raise PinUnknownPi('The default pin_factory is not attached to a Pi')
@@ -1158,4 +1363,3 @@ def pi_info(revision=None):
             # be nice to people passing an int (or something numeric anyway)
             revision = int(revision)
         return PiBoardInfo.from_revision(revision)
-
