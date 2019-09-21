@@ -6,12 +6,12 @@ gpiozero
     :target: https://badge.fury.io/py/gpiozero
     :alt: Latest Version
 
-.. image:: https://travis-ci.org/RPi-Distro/python-gpiozero.svg?branch=master
-    :target: https://travis-ci.org/RPi-Distro/python-gpiozero
+.. image:: https://travis-ci.org/gpiozero/gpiozero.svg?branch=master
+    :target: https://travis-ci.org/gpiozero/gpiozero
     :alt: Build Tests
 
-.. image:: https://img.shields.io/codecov/c/github/RPi-Distro/python-gpiozero/master.svg?maxAge=2592000
-    :target: https://codecov.io/github/RPi-Distro/python-gpiozero
+.. image:: https://img.shields.io/codecov/c/github/gpiozero/gpiozero/master.svg?maxAge=2592000
+    :target: https://codecov.io/github/gpiozero/gpiozero
     :alt: Code Coverage
 
 A simple interface to GPIO devices with Raspberry Pi.
@@ -59,7 +59,7 @@ together:
     pause()
 
 You can advance to using the declarative paradigm along with provided
-:doc:`source tools <api_tools>` to describe the behaviour of devices and their
+ to describe the behaviour of devices and their
 interactions:
 
 .. code:: python
@@ -76,7 +76,9 @@ interactions:
 
     pause()
 
-See the chapter on :doc:`Source/Values <source_values>` for more information.
+See the chapter on `Source/Values`_ for more information.
+
+.. _Source/Values: https://gpiozero.readthedocs.io/en/stable/source_values.html
 
 The library includes interfaces to many simple everyday components, as well as
 some more complex things like sensors, analogue-to-digital converters, full
@@ -91,14 +93,16 @@ Pin factories
 GPIO Zero builds on a number of underlying pin libraries, including `RPi.GPIO`_
 and `pigpio`_, each with their own benefits. You can select a particular pin
 library to be used, either for the whole script or per-device, according to your
-needs. See the section on :ref:`changing the pin factory
-<changing-pin-factory>`.
+needs. See the section on `changing the pin factory`_.
 
-.. _RPi.GPIO: https://pypi.org/project/RPi.GPIO/
+.. _RPi.GPIO: https://pypi.org/project/RPi.GPIO
 .. _pigpio: https://pypi.org/project/pigpio
+.. _changing the pin factory: https://gpiozero.readthedocs.io/en/stable/api_pins.html#changing-the-pin-factory
 
 A "mock pin" interface is also provided for testing purposes. Read more about
-this in the section on :ref:`mock pins <mock-pins>`.
+this in the section on `mock pins`_.
+
+.. _mock pins: https://gpiozero.readthedocs.io/en/stable/api_pins.html#mock-pins
 
 Installation
 ============
@@ -152,6 +156,7 @@ Other contributors:
 - `Jeevan M R`_
 - `Claire Pollard`_
 - `Philippe Muller`_
+- `Sofiia Kosovan`_
 
 
 .. _Andrew Scheller: https://github.com/lurch
@@ -176,3 +181,4 @@ Other contributors:
 .. _Jeevan M R: https://github.com/jee1mr
 .. _Claire Pollard: https://github.com/tuftii
 .. _Philippe Muller: https://github.com/pmuller
+.. _Sofiia Kosovan: https://github.com/SofiiaKosovan
